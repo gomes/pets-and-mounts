@@ -19,8 +19,7 @@ move-folders:
   PetsAndMounts/config: PetsAndMountsConfig
   PetsAndMounts/loader: PetsAndMountsLoader
 
-externals:
-
+externals: {}
 tools-used:
  - findglobals
  - masque
