@@ -1,27 +1,26 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
 ..\FrameXML\UI.xsd">
     <!-- Models frame -->
-    <PlayerModel name="PetsAndMountsConfigModelFrame" parent="UIParent" framestrata="TOOLTIP" hidden="true">
-        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
-            <EdgeSize>
-                <AbsValue val="12"/>
-            </EdgeSize>
-            <TileSize>
-                <AbsValue val="12"/>
-            </TileSize>
-            <BackgroundInsets>
-                <AbsInset left="4" right="4" top="4" bottom="4"/>
-            </BackgroundInsets>
-        </Backdrop>
+    <PlayerModel name="PetsAndMountsConfigModelFrame" inherits="BackdropTemplate" parent="UIParent" framestrata="TOOLTIP" hidden="true">
         <Scripts>
             <OnLoad>
-                self:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
+                self:SetBackdrop({
+                    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true,
+                    tileEdge = true,
+                    tileSize = 12,
+                    edgeSize = 12,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                });
+                self:SetBackdropBorderColor(0.1, 0.1, 0.1);
                 self:SetBackdropColor(0.09, 0.09, 0.09);
+                self:SetAlpha(0.7);
                 self:EnableMouse(1);
             </OnLoad>
             <OnShow>
                 self.rotation = 0;
-                self.rotationTime = GetTime();
+                self.rotationTime = 0;
             </OnShow>
             <OnHide>
                 self.manualRotation = nil;
@@ -54,7 +53,7 @@
     </PlayerModel>
 
     <!-- Search frame -->
-    <Frame name="PetsAndMountsSearchFrame" parent="UIParent" frameStrata="DIALOG" hidden="true">
+    <Frame name="PetsAndMountsSearchFrame" inherits="BackdropTemplate" parent="UIParent" frameStrata="DIALOG" hidden="true">
         <Size x="300" y="30"/>
         <Frames>
             <EditBox name="$parentSearchBox" inherits="SearchBoxTemplate" parentKey="searchBox" letters="40">
@@ -71,13 +70,24 @@
         </Frames>
         <Scripts>
             <OnLoad>
+                self:SetBackdrop({
+                    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true,
+                    tileEdge = true,
+                    tileSize = 12,
+                    edgeSize = 12,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                });
                 self:SetBackdropBorderColor(.6, .6, .6, 1);
+                self:SetBackdropColor(0.09, 0.09, 0.09);
             </OnLoad>
         </Scripts>
     </Frame>
 
     <!-- Icons frame -->
-    <CheckButton name="PetsAndMountsSelectIconFrameButtonTemplate" inherits="PopupButtonTemplate" virtual="true">
+    <!-- PopupButtonTemplate was renamed to SimplePopupButtonTemplate; Icon/Highlight/Checked match GearSetPopupButtonTemplate -->
+    <CheckButton name="PetsAndMountsSelectIconFrameButtonTemplate" inherits="SimplePopupButtonTemplate" virtual="true">
         <Scripts>
             <OnClick>
                 PetsAndMountsGlobal:IconsFrameButtonOnClick(self);
@@ -96,21 +106,19 @@
                 GameTooltip:Hide();
             </OnLeave>
         </Scripts>
+        <NormalTexture name="$parentIcon" nonBlocking="true" parentKey="Icon">
+            <Size x="36" y="36"/>
+            <Anchors>
+                <Anchor point="CENTER" x="0" y="-1"/>
+            </Anchors>
+        </NormalTexture>
+        <HighlightTexture alphaMode="ADD" file="Interface\Buttons\ButtonHilight-Square"/>
+        <CheckedTexture alphaMode="ADD" file="Interface\Buttons\CheckButtonHilight"/>
     </CheckButton>
 
-    <Frame name="PetsAndMountsSelectIconFrame" parent="UIParent" framestrata="DIALOG" hidden="true">
+    <Frame name="PetsAndMountsSelectIconFrame" inherits="BackdropTemplate" parent="UIParent" framestrata="DIALOG" hidden="true">
         <Size x="416" y="500"/>
-        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
-            <EdgeSize>
-                <AbsValue val="12"/>
-            </EdgeSize>
-            <TileSize>
-                <AbsValue val="12"/>
-            </TileSize>
-            <BackgroundInsets>
-                <AbsInset left="4" right="4" top="4" bottom="4"/>
-            </BackgroundInsets>
-        </Backdrop>
+        
         <Layers>
             <Layer level="ARTWORK">
                 <FontString name="$parentSearchCount" parentKey="searchCount" inherits="GameFontNormalLeft">
@@ -547,7 +555,16 @@
         </Frames>
         <Scripts>
             <OnLoad>
-                self:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
+                self:SetBackdrop({
+                    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true,
+                    tileEdge = true,
+                    tileSize = 12,
+                    edgeSize = 12,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                });
+                self:SetBackdropBorderColor(0.1, 0.1, 0.1);
                 self:SetBackdropColor(0.09, 0.09, 0.09);
             </OnLoad>
             <OnShow>
@@ -565,19 +582,9 @@
     </Frame>
 
     <!-- Input code frame -->
-    <Frame name="PetsAndMountsInputCodeFrame" parent="UIParent" EnableMouse="true" framestrata="TOOLTIP" hidden="true">
+    <Frame name="PetsAndMountsInputCodeFrame" inherits="BackdropTemplate" parent="UIParent" EnableMouse="true" framestrata="TOOLTIP" hidden="true">
         <Size x="623" y="568"/>
-        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
-            <EdgeSize>
-                <AbsValue val="12"/>
-            </EdgeSize>
-            <TileSize>
-                <AbsValue val="12"/>
-            </TileSize>
-            <BackgroundInsets>
-                <AbsInset left="4" right="4" top="4" bottom="4"/>
-            </BackgroundInsets>
-        </Backdrop>
+        
         <Layers>
             <Layer level="ARTWORK">
                 <FontString name="$parentErrorString" parentKey="errorString" inherits="GameFontNormalLeft">
@@ -623,25 +630,24 @@
                     </EditBox>
                 </ScrollChild>
             </ScrollFrame>
-            <Frame name="$parentEditBoxBackground">
+            <Frame name="$parentEditBoxBackground" inherits="BackdropTemplate">
                 <Size x="582" y="515"/>
                 <Anchors>
                     <Anchor point="TOP" relativeTo="$parentScrollFrameEditBox" x="0" y="5"/>
                 </Anchors>
-                <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
-                    <EdgeSize>
-                        <AbsValue val="12"/>
-                    </EdgeSize>
-                    <TileSize>
-                        <AbsValue val="12"/>
-                    </TileSize>
-                    <BackgroundInsets>
-                        <AbsInset left="4" right="4" top="4" bottom="4"/>
-                    </BackgroundInsets>
-                </Backdrop>
+                
                 <Scripts>
                     <OnLoad>
-                        self:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
+                        self:SetBackdrop({
+                            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                            tile = true,
+                            tileEdge = true,
+                            tileSize = 12,
+                            edgeSize = 12,
+                            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                        });
+                        self:SetBackdropBorderColor(0.1, 0.1, 0.1);
                         self:SetBackdropColor(0.04, 0.04, 0.04);
                     </OnLoad>
                 </Scripts>
@@ -679,7 +685,16 @@
         </Frames>
         <Scripts>
             <OnLoad>
-                self:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
+                self:SetBackdrop({
+                    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true,
+                    tileEdge = true,
+                    tileSize = 12,
+                    edgeSize = 12,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                });
+                self:SetBackdropBorderColor(0.1, 0.1, 0.1);
                 self:SetBackdropColor(0.1, 0.1, 0.1);
             </OnLoad>
             <OnShow>

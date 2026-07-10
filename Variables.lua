@@ -18,14 +18,14 @@ local L = A.L;
 A.onFirstLoadActions = 1;
 
 -- AddOn version
-A.version = GetAddOnMetadata("PetsAndMounts", "Version");
+A.version = "1.9.0";
 A.versionStage = "Release";
 --@alpha@
 A.versionStage = "Alpha";
 --@end-alpha@
 
 -- Addon URL
-A.addonURL = "http://www.curse.com/addons/wow/pets-and-mounts";
+A.addonURL = "https://www.curseforge.com/wow/addons/pets-and-mounts";
 
 -- Text colors
 A.color =

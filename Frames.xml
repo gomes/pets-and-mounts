@@ -36,9 +36,6 @@
             <OnLoad>
                 self:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp");
             </OnLoad>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickPet(self, button);
-            </PreClick>
             <OnEnter>
                 PetsAndMountsGlobal:SetTooltip(self);
             </OnEnter>
@@ -88,12 +85,6 @@
             <OnLoad>
                 self:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp");
             </OnLoad>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMount(self, button);
-            </PreClick>
-            <PostClick>
-                PetsAndMountsGlobal:PostClickMount(self, button);
-            </PostClick>
             <OnEnter>
                 PetsAndMountsGlobal:SetTooltip(self);
             </OnEnter>
@@ -109,82 +100,35 @@
     </Button>
 
     <Button name="PetsAndMountsSecureButtonPassengers" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonFlying" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonGround" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonAquatic" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonSurface" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonRepair" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <Button name="PetsAndMountsSecureButtonHybrid" inherits="SecureActionButtonTemplate" parent="UIParent" hidden="true">
-        <Scripts>
-            <PreClick>
-                PetsAndMountsGlobal:PreClickMountForced(self, button);
-            </PreClick>
-        </Scripts>
     </Button>
 
     <!-- Models frame -->
     <PlayerModel name="PetsAndMountsMenuModelFrame" parent="UIParent" framestrata="TOOLTIP" hidden="true">
-        <Backdrop bgFile="Interface\Tooltips\UI-Tooltip-Background" edgeFile="Interface\Tooltips\UI-Tooltip-Border" tile="true">
-            <EdgeSize>
-                <AbsValue val="12"/>
-            </EdgeSize>
-            <TileSize>
-                <AbsValue val="12"/>
-            </TileSize>
-            <BackgroundInsets>
-                <AbsInset left="4" right="4" top="4" bottom="4"/>
-            </BackgroundInsets>
-        </Backdrop>
         <Scripts>
             <OnLoad>
-                self:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
-                self:SetBackdropColor(TOOLTIP_DEFAULT_BACKGROUND_COLOR.r, TOOLTIP_DEFAULT_BACKGROUND_COLOR.g, TOOLTIP_DEFAULT_BACKGROUND_COLOR.b);
+                self:SetAlpha(0.7);
             </OnLoad>
             <OnShow>
                 self.rotation = 0;
-                self.rotationTime = GetTime();
+                self.rotationTime = 0;
             </OnShow>
             <OnHide>
                 self:ClearModel();
@@ -225,18 +169,7 @@
         <Anchors>
             <Anchor point="CENTER"/>
         </Anchors>
-        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" tile="true">
-            <BackgroundInsets>
-                <AbsInset left="12" right="12" top="12" bottom="12"/>
-            </BackgroundInsets>
-            <TileSize>
-                <AbsValue val="32"/>
-            </TileSize>
-            <EdgeSize>
-                <AbsValue val="32"/>
-            </EdgeSize>
-        </Backdrop>
-        <Layers>
+                <Layers>
             <Layer level="ARTWORK">
                 <Texture name="$parentHeader" file="Interface\DialogFrame\UI-DialogBox-Header">
                     <Size>

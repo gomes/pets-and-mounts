@@ -13,6 +13,8 @@ local L = A.L;
 local ipairs = ipairs;
 local time = time;
 local type = type;
+local C_Spell = C_Spell;
+local IsStealthed = IsStealthed;
 local tContains = tContains;
 local math = math;
 local select = select;
@@ -33,10 +35,12 @@ local tonumber = tonumber;
 --- Check if the player is stealthed/invis
 -- 51755 Camouflage (hunter)
 -- 32612 Invis (mage)
+local stealthAura1 = C_Spell.GetSpellInfo(51755);
+local stealthAura2 = C_Spell.GetSpellInfo(32612);
 local stealthAuras =
 {
-    [1] = GetSpellInfo(51755),
-    [2] = GetSpellInfo(32612),
+    [1] = stealthAura1 and stealthAura1.name or nil,
+    [2] = stealthAura2 and stealthAura2.name or nil,
 };
 function A:IsStealthed()
     if ( IsStealthed() ) then
@@ -56,8 +60,10 @@ end
 
 --- Check if the player is eating or drinking
 function A:InitHasRegenBuff()
-    A.foodBuffLocalized = GetSpellInfo(104935); -- Food
-    A.drinkBuffLocalized = GetSpellInfo(104270); -- Drink
+    local foodInfo = C_Spell.GetSpellInfo(104935);
+    local drinkInfo = C_Spell.GetSpellInfo(104270);
+    A.foodBuffLocalized = foodInfo and foodInfo.name or nil; -- Food
+    A.drinkBuffLocalized = drinkInfo and drinkInfo.name or nil; -- Drink
 end
 function A:HasRegenBuff()
     if ( not A.foodBuffLocalized or not A.drinkBuffLocalized ) then A:InitHasRegenBuff(); end
@@ -87,6 +93,11 @@ end
 
 --- Summon a pet by GUID
 function A:SummonPet(id)
+    if ( not id ) then
+        A:DebugMessage("SummonPet() - No pet ID");
+        return nil;
+    end
+
     if ( InCombatLockdown() ) then
         A:DebugMessage("SummonPet() - In combat");
         return nil;
@@ -104,6 +115,10 @@ function A:SummonPet(id)
             id = id,
             t = t,
         };
+
+        -- GetSummonedPetGUID can lag a tick behind SummonPetByGUID
+        A:CancelTimer(A.currentInfosTimer, 1);
+        A.currentInfosTimer = A:ScheduleTimer("ApplyCurrentPetInfos", 0.25);
 
         return 1;
     else
@@ -128,7 +143,10 @@ function A:RevokePet(playerCall)
 
     if ( playerCall ) then A.playerRevokedPet = 1; end
 
-    C_PetJournal.SummonPetByGUID(currentPet);
+    C_PetJournal.DismissSummonedPet(currentPet);
+
+    A:CancelTimer(A.currentInfosTimer, 1);
+    A.currentInfosTimer = A:ScheduleTimer("ApplyCurrentPetInfos", 0.25);
 end
 
 --- Get a table with usable pets
@@ -147,8 +165,11 @@ function A:GetUsablePetsTable(tbl)
     end
 
     for k,v in ipairs(tbl) do
-        --local id = select(11, C_PetJournal.GetPetInfoByPetID(v));
-        local _, customName, _, _, _, _, _, name, _, _, id = C_PetJournal.GetPetInfoByPetID(v);
+        local petInfo = C_PetJournal.GetPetInfoTableByPetID(v);
+        local customName = petInfo and petInfo.customName;
+        local name = petInfo and petInfo.name;
+        -- restrictedPets is keyed by NPC creatureID (was 11th return of GetPetInfoByPetID)
+        local id = petInfo and petInfo.creatureID;
 
         if ( A.restrictedPets[id] ) then -- Got a restricted pet
             -- Banned
@@ -182,9 +203,11 @@ end
 -- @param tbl The original petts table
 -- @return The pet ID
 function A:GetRandomPet(tbl)
-    local index = math.random(#A:GetUsablePetsTable(tbl));
+    local usableTbl = A:GetUsablePetsTable(tbl);
+    local size = #usableTbl;
+    if ( size == 0 ) then return nil; end
 
-    return A.usablePetsCache[tbl][index];
+    return usableTbl[math.random(size)];
 end
 
 --- Check if we got a least one mount available after restriction in the given table
@@ -245,6 +268,10 @@ end
 --- Get a random pet from databases and summon it
 -- @param playerCall When called by the player, unset the var disabling autopet
 function A:RandomPet(playerCall)
+    -- Rebuild if journal was empty at login (PET_JOURNAL_LIST_UPDATE may not have fired yet)
+    if ( not A.pamTable.petsIds or #A.pamTable.petsIds == 0 ) then
+        A:BuildPetsTable(1);
+    end
     -- DB init
     A:InitializeDB();
 
@@ -423,7 +450,8 @@ function A:GotWaterBreathingBuff()
         A.waterBreathingBuffsCache = {};
 
         for k,v in ipairs(A.underwaterBreathingSpells) do
-            local name = GetSpellInfo(v);
+            local spellInfo = C_Spell.GetSpellInfo(v);
+            local name = spellInfo and spellInfo.name or nil;
 
             if ( name ) then
                 A.waterBreathingBuffsCache[#A.waterBreathingBuffsCache+1] = name;
@@ -584,7 +612,8 @@ function A:GetUsableMountsTable(tbl)
 
     for k,v in ipairs(tbl) do
         if ( A:IsMountRestricted(v) ) then -- Got a restricted mount
-            A:DebugMessage(("Restricted mount: %s - spell: %d"):format(select(1,GetSpellInfo(v)), v));
+            local spellInfo = C_Spell.GetSpellInfo(v);
+            A:DebugMessage(("Restricted mount: %s - spell: %d"):format(spellInfo and spellInfo.name or v, v));
         else
             A.usableMountsCache[tbl][#A.usableMountsCache[tbl]+1] = v;
         end
@@ -605,9 +634,13 @@ end
 -- @param tbl The original mounts table
 -- @return The mount spellID
 function A:GetRandomMount(tbl)
-    local index = math.random(#A:GetUsableMountsTable(tbl));
+    local usableTbl = A:GetUsableMountsTable(tbl);
+    local size = #usableTbl;
+    if ( size == 0 ) then return nil; end
 
-    return A.usableMountsCache[tbl][index];
+    local index = math.random(size);
+
+    return usableTbl[index];
 end
 
 --- Check if we got a least one mount available after restriction, in the given table
@@ -644,7 +677,8 @@ end
 -- @param unitID target or mouseover
 function A:GetOtherPlayerMount(unitID)
     local index = 1;
-    local spellID = select(10, UnitBuff(unitID, index));
+    local auraData = C_UnitAuras.GetAuraDataByIndex(unitID, index, "HELPFUL");
+    local spellID = auraData and auraData.spellId or nil;
 
     -- One shot, woot!
     for k,v in ipairs(A.pamTable.mountsIds) do
@@ -657,7 +691,8 @@ function A:GetOtherPlayerMount(unitID)
     -- Continue checking
     while spellID do
         index = index + 1;
-        spellID = select(10, UnitBuff(unitID, index));
+        local auraData2 = C_UnitAuras.GetAuraDataByIndex(unitID, index, "HELPFUL");
+        spellID = auraData2 and auraData2.spellId or nil;
 
         for k,v in ipairs(A.pamTable.mountsIds) do
             if ( tContains(A:GetUsableMountsTable(v), spellID) ) then
@@ -852,5 +887,6 @@ function A:RandomMount(cat)
     if ( A:SummonMountBySpellId(id) ) then return; end
 
     -- If we are here the player cannot use the mount (horde/alliance specific, achievement, level, etc)
-    A:Message(L["Tried to summon %s. It is a mount this toon cannot use (Horde/Alliance specific, achievement, level, etc)."]:format(select(1,GetSpellInfo(id))), 1);
+    local spellInfo = C_Spell.GetSpellInfo(id);
+    A:Message(L["Tried to summon %s. It is a mount this toon cannot use (Horde/Alliance specific, achievement, level, etc)."]:format(spellInfo and spellInfo.name or id), 1);
 end

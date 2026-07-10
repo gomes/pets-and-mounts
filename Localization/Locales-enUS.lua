@@ -21,6 +21,7 @@ L["Alpha"] = true;
 L["Alt"] = true;
 L["Aquatic"] = true;
 L["Author"] = true;
+L["Original author"] = true;
 
 L["Barber"] = true;
 L["Bindings"] = true;

@@ -178,17 +178,25 @@ function A:IsBoomkin()
 end
 
 --- Is the player able to use the Telaari Talbuk or the Frostwolf War Wolf
+-- Zone ability 161691 overrides to 165803 (Alliance) / 164222 (Horde) only in Draenor.
+-- Must resolve by spell NAME so we get the active override spellID, not a static lookup.
 function A:IsTelaariTalbukUsable()
     if ( not A.draenorZoneAbilityBaseName ) then
-        A.draenorZoneAbilityBaseName = GetSpellInfo(161691);
+        local spellInfo = C_Spell.GetSpellInfo(161691);
+        A.draenorZoneAbilityBaseName = spellInfo and spellInfo.name;
     end
 
+    if ( not A.draenorZoneAbilityBaseName ) then return nil; end
+
+    local active = C_Spell.GetSpellInfo(A.draenorZoneAbilityBaseName);
+    local activeSpellID = active and active.spellID;
+
     if ( A.playerFaction == "Alliance" ) then
-        if ( select(7, GetSpellInfo(A.draenorZoneAbilityBaseName)) == 165803 ) then
+        if ( activeSpellID == 165803 ) then
             return 1;
         end
     elseif ( A.playerFaction == "Horde" ) then
-        if ( select(7, GetSpellInfo(A.draenorZoneAbilityBaseName)) == 164222 ) then
+        if ( activeSpellID == 164222 ) then
             return 1;
         end
     end
@@ -266,8 +274,9 @@ A.classesSpellsTable =
 function A:SetClassSpells()
     if ( A.classesSpellsTable[A.playerClass] ) then
         for k,v in pairs(A.classesSpellsTable[A.playerClass]) do
-            local name = GetSpellInfo(v);
-            local subtext = GetSpellSubtext(v);
+            local spellInfo = C_Spell.GetSpellInfo(v);
+            local name = spellInfo and spellInfo.name or nil;
+            local subtext = spellInfo and spellInfo.subtext or nil;
 
             if ( not name or name == "" ) then
                 A:ScheduleTimer("SetClassSpells", 0.5);
@@ -723,17 +732,23 @@ function A:PreClickMount(button, clickedBy)
         elseif ( A.db.profile.mountButtonControlLock and IsControlKeyDown() ) then
             button:SetAttribute("type", "macro");
             button:SetAttribute("macrotext", nil);
-            A:ToggleButtonLock(button);
+            A:ToggleButtonLock(button:GetName());
         else
-            -- Specials mounts
+            -- Special mounts
             if ( A.db.profile.telaariTalbuk and A:IsTelaariTalbukUsable() and not A:IsSwimming() and not A:IsFlyable() and not IsIndoors() and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 165803 - Telaari Talbuk / 164222 - Frostwolf War Wolf
                 if ( A.playerFaction == "Alliance" ) then
-                    if ( not A.telaariTalbukName ) then A.telaariTalbukName = GetSpellInfo(165803); end
+                    if ( not A.telaariTalbukName ) then
+                        local spellInfo = C_Spell.GetSpellInfo(165803);
+                        A.telaariTalbukName = spellInfo and spellInfo.name;
+                    end
 
                     button:SetAttribute("type", "macro");
                     button:SetAttribute("macrotext", ("/use %s"):format(A.telaariTalbukName or "Telaari Talbuk"));
                 else
-                    if ( not A.telaariTalbukName ) then A.telaariTalbukName = GetSpellInfo(164222); end
+                    if ( not A.telaariTalbukName ) then
+                        local spellInfo = C_Spell.GetSpellInfo(164222);
+                        A.telaariTalbukName = spellInfo and spellInfo.name;
+                    end
 
                     button:SetAttribute("type", "macro");
                     button:SetAttribute("macrotext", ("/use %s"):format(A.telaariTalbukName or "Frostwolf War Wolf"));
@@ -1111,7 +1126,7 @@ function A:PreClickPet(button, clickedBy)
         elseif ( IsControlKeyDown() ) then
             button:SetAttribute("type", "macro");
             button:SetAttribute("macrotext", nil);
-            A:ToggleButtonLock(button);
+            A:ToggleButtonLock(button:GetName());
         else
             button:SetAttribute("type", "macro");
             button:SetAttribute("macrotext", "/pampet");
@@ -1410,7 +1425,45 @@ function A:SetButtons()
     end
 
     -- Icon
-    
+
+    -- Explicit SetScript + SetAttribute required for SecureActionButtonTemplate (WoW 12.0+)
+    PetsAndMountsSecureButtonPets:SetScript("PreClick", function(self, button, down)
+        A:PreClickPet(self, button);
+    end);
+    PetsAndMountsSecureButtonPets:SetAttribute("type", "macro");
+    PetsAndMountsSecureButtonPets:SetAttribute("macrotext", "/pampet");
+
+    PetsAndMountsSecureButtonMounts:SetScript("PreClick", function(self, button, down)
+        A:PreClickMount(self, button);
+    end);
+    PetsAndMountsSecureButtonMounts:SetScript("PostClick", function(self, button, down)
+        A:PostClickMount(self, button);
+    end);
+    PetsAndMountsSecureButtonMounts:SetAttribute("type", "macro");
+    PetsAndMountsSecureButtonMounts:SetAttribute("macrotext", "/pammount");
+
+    -- Other mount buttons too
+    PetsAndMountsSecureButtonPassengers:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonFlying:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonGround:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonAquatic:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonSurface:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonRepair:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
+    PetsAndMountsSecureButtonHybrid:SetScript("PreClick", function(self, button, down)
+        A:PreClickMountForced(self, button);
+    end);
 
     -- Refresh config panel
     A:NotifyChangeForAll();
@@ -1526,7 +1579,21 @@ end
     Masque support
 -------------------------------------------------------------------------------]]--
 
-if ( IsAddOnLoaded("Masque") ) then
-    LibStub("Masque"):Group(L["Pets & Mounts"], L["Mounts button"]):AddButton(PetsAndMountsSecureButtonMounts);
-    LibStub("Masque"):Group(L["Pets & Mounts"], L["Companions button"]):AddButton(PetsAndMountsSecureButtonPets);
+local MasqueLoaded = false;
+
+local function SetupMasque()
+    if ( MasqueLoaded ) then return; end
+    local masque = LibStub("Masque", true);
+    if ( not masque ) then return; end
+    MasqueLoaded = true;
+    masque:Group(L["Pets & Mounts"], L["Mounts button"]):AddButton(PetsAndMountsSecureButtonMounts);
+    masque:Group(L["Pets & Mounts"], L["Companions button"]):AddButton(PetsAndMountsSecureButtonPets);
 end
+
+local masqueFrame = CreateFrame("Frame");
+masqueFrame:RegisterEvent("ADDON_LOADED");
+masqueFrame:SetScript("OnEvent", function(self, event, addonName)
+    if ( addonName == "PetsAndMounts" ) then
+        SetupMasque();
+    end
+end);
