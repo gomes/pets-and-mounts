@@ -282,14 +282,19 @@ end
 function A:GetPetNameByID(id)
     if ( not id ) then return nil; end
 
-    local _, customName, _, _, _, _, _,creatureName = C_PetJournal.GetPetInfoByPetID(id);
+    local petInfo = C_PetJournal.GetPetInfoTableByPetID(id);
+    if ( petInfo ) then
+        local customName = petInfo.customName;
+        local creatureName = petInfo.name;
 
-    if ( customName ) then
-        return customName;
-    end
+        if ( customName ) then
+            return customName;
+        end
 
     if ( creatureName ) then
         return creatureName;
+    end
+
     end
 
     return nil;
@@ -462,7 +467,8 @@ end
 function A:PlayerGotBuff(searchTerm)
     if ( type(searchTerm) == "string" ) then
         for i=1,40 do
-            local buffName = UnitBuff("player", i);
+            local buffAura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL");
+            local buffName = buffAura and buffAura.name or nil;
 
             if ( buffName ) then
                 if ( searchTerm == buffName ) then
@@ -474,7 +480,8 @@ function A:PlayerGotBuff(searchTerm)
         end
     elseif ( type(searchTerm) == "table" ) then
         for i=1,40 do
-            local buffName = UnitBuff("player", i);
+            local buffAura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL");
+            local buffName = buffAura and buffAura.name or nil;
 
             if ( buffName ) then
                 if ( tContains(searchTerm, buffName) ) then
@@ -560,22 +567,18 @@ petsFilters.types = {};
 petsFilters.sources = {};
 function A:StoreAndResetPetsFilters()
     -- Store filters
-    petsFilters.search = PetJournal.searchBox:GetText();
+    petsFilters.search = PetJournal and PetJournal.searchBox and PetJournal.searchBox:GetText() or "";
     petsFilters.collected = C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED);
 
-    for i=1,C_PetJournal.GetNumPetTypes() do
-        petsFilters.types[i] = C_PetJournal.IsPetTypeChecked(i);
-    end
-
-    for i=1,C_PetJournal.GetNumPetSources() do
-        petsFilters.sources[i] = C_PetJournal.IsPetSourceChecked(i);
-    end
+    -- Note: GetNumPetTypes, GetNumPetSources, IsPetTypeChecked, IsPetSourceChecked,
+    -- SetPetTypeFilter, SetPetSourceChecked not available in 11.0 API
+    -- petsFilters.types and petsFilters.sources are not stored/restored
 
     -- Check them all
     C_PetJournal.SetSearchFilter("");
     C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true);
-    C_PetJournal.SetAllPetTypesChecked(true);
-    C_PetJournal.SetAllPetSourcesChecked(true);
+    -- C_PetJournal.SetAllPetTypesChecked(true); -- Not available in 11.0
+    -- C_PetJournal.SetAllPetSourcesChecked(true); -- Not available in 11.0
 end
 
 --- Restore pets filters
@@ -583,21 +586,9 @@ function A:RestorePetsFilters()
     C_PetJournal.SetSearchFilter(petsFilters.search);
     C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, petsFilters.collected);
 
-    for i=1,C_PetJournal.GetNumPetTypes() do
-        if ( petsFilters.types[i] ) then
-            C_PetJournal.SetPetTypeFilter(i, true);
-        else
-            C_PetJournal.SetPetTypeFilter(i, false);
-        end
-    end
-
-    for i=1,C_PetJournal.GetNumPetSources() do
-        if ( petsFilters.sources[i] ) then
-            C_PetJournal.SetPetSourceChecked(i, true);
-        else
-            C_PetJournal.SetPetSourceChecked(i, false);
-        end
-    end
+    -- Note: GetNumPetTypes, SetPetTypeFilter, GetNumPetSources, SetPetSourceChecked
+    -- not available in 11.0 API
+    -- petsFilters.types and petsFilters.sources are not restored
 end
 
 --- Will check if the pet can be used, this is special as there is some pets with the same name, but faction locked
@@ -622,6 +613,8 @@ end
 --- Build the companions table
 function A:BuildPetsTable(force)
     -- First, check if an update is needed
+    -- GetNumPets() still exists in 12.0 (used by Blizzard_PetCollection).
+    -- GetNumPetsInJournal(creatureID) is a different API (count of a specific creature).
     local _, numPets = C_PetJournal.GetNumPets();
 
     if ( not force and A.lastPetsCount == numPets ) then
@@ -636,7 +629,7 @@ function A:BuildPetsTable(force)
     -- Update needed, store filters and set them for update
     A:StoreAndResetPetsFilters();
 
-    -- Getting total number of pets
+    -- Getting total number of pets (first return = total journal entries)
     numPets = C_PetJournal.GetNumPets();
 
     -- Security check if nil or == 0 abort
@@ -657,11 +650,14 @@ function A:BuildPetsTable(force)
         --[11] = {}, -- None
     };
     A.pamTable.petsIds = {};
+    A.usablePetsCache = {};
 
     for i=1,numPets do
         local petID, _, isOwned, customName, level, _, _, creatureName, icon, petType = C_PetJournal.GetPetInfoByIndex(i);
-        local creatureID = select(6, C_PetJournal.GetPetInfoByPetID(petID or "BattlePet-0-000000000000"));
-        local rarity = select(5, C_PetJournal.GetPetStats(petID or "BattlePet-0-000000000000"));
+        local petInfo = petID and C_PetJournal.GetPetInfoTableByPetID(petID);
+        -- displayID is what SetDisplayInfo expects (was select(6) of GetPetInfoByPetID)
+        local creatureID = petInfo and petInfo.displayID or 0;
+        local rarity = petID and select(5, C_PetJournal.GetPetStats(petID)) or 0;
 
         if ( isOwned and A:CheckPetWithSameName(creatureID) ) then
             if ( A.petTypes[petType] ) then
@@ -771,10 +767,13 @@ end
 
 -- Pets filters handling methods
 local mountsFilters = {};
+mountsFilters.search = "";
 mountsFilters.sources = {};
 function A:StoreAndResetMountsFilters()
     -- Store filters
-    mountsFilters.search = MountJournal.searchBox:GetText();
+    if ( MountJournal and MountJournal.searchBox ) then
+        mountsFilters.search = MountJournal.searchBox:GetText();
+    end
     mountsFilters.collected = C_MountJournal.GetCollectedFilterSetting(LE_MOUNT_JOURNAL_FILTER_COLLECTED);
 
     for i=1,C_PetJournal.GetNumPetSources() do -- Blizzard is using this method as of 7.03
@@ -789,7 +788,7 @@ end
 
 --- Restore pets filters
 function A:RestoreMountsFilters()
-    C_MountJournal.SetSearch(mountsFilters.search);
+    C_MountJournal.SetSearch(mountsFilters.search or "");
     C_MountJournal.SetCollectedFilterSetting(LE_MOUNT_JOURNAL_FILTER_COLLECTED, mountsFilters.collected);
 
     for i=1,C_PetJournal.GetNumPetSources() do -- Blizzard is using this method as of 7.03
@@ -1002,7 +1001,7 @@ function A:InitializeDB()
 
     A:DebugMessage("Initializing databases");
     A.initialized = 1;
-    A:BuildBothTables();
+    A:BuildBothTables(1); -- force build both tables even if last counts were zero!
 
     -- Registering database update events here
     -- I do not know if something changes, as I was able to get pets and mounts info when login in
@@ -1016,9 +1015,6 @@ function A:InitializeDB()
     -- This event is used to update Data Broker
     -- It calls the DB so setting it here
     A:RegisterEvent("UNIT_AURA");
-
-    -- Same
-    A:Hook(C_PetJournal, "SummonPetByGUID", true);
 
     -- Setting here both infos the first time (Data Broker)
     -- Doing this too soon can cause nil error with strings manipulation when creating the DB
@@ -1439,15 +1435,41 @@ function A:SetMainTimer()
 end
 
 --- Set combat log event
+-- Create a frame outside any tainted context for protected events
+local stealthEventFrame = CreateFrame("Frame");
+local stealthEventsRegistered = false;
+
+local function OnStealthEvent(self, event, ...)
+    if ( not stealthEventsRegistered or not A ) then return; end
+    if ( event == "UPDATE_STEALTH" ) then
+        A:AutoPetDelay();
+    end
+end
+stealthEventFrame:SetScript("OnEvent", OnStealthEvent);
+-- Events are registered lazily in SetStealthEvents to avoid taint during .toc loading
+
+-- Deferred event registration helpers (defined at module level to avoid taint)
+local function DoRegisterStealthEvents()
+    stealthEventFrame:RegisterEvent("UPDATE_STEALTH");
+    stealthEventsRegistered = true;
+end
+
+local function DoUnregisterStealthEvents()
+    stealthEventFrame:UnregisterEvent("UPDATE_STEALTH");
+    stealthEventsRegistered = false;
+end
+
 function A:SetStealthEvents()
     if ( A:IsNotWhenStealthedEnabled() ) then
-        A:DebugMessage("SetStealthEvents() - Registering stealth events.");
-        A:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
-        A:RegisterEvent("UPDATE_STEALTH", "AutoPetDelay");
+        if ( not stealthEventsRegistered ) then
+            A:DebugMessage("SetStealthEvents() - Registering stealth events.");
+            C_Timer.After(1, DoRegisterStealthEvents);
+        end
     else
-        A:DebugMessage("SetStealthEvents() - UNRegistering stealth events.");
-        A:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
-        A:UnregisterEvent("UPDATE_STEALTH");
+        if ( stealthEventsRegistered ) then
+            A:DebugMessage("SetStealthEvents() - UNRegistering stealth events.");
+            C_Timer.After(1, DoUnregisterStealthEvents);
+        end
     end
 end
 
@@ -1539,8 +1561,13 @@ function A:SetCurrentPetInfos()
     local id = C_PetJournal.GetSummonedPetGUID();
 
     if ( id ) then
-        local _, customName, level, _, _, _, _,creatureName, icon = C_PetJournal.GetPetInfoByPetID(id);
-        local rarity = select(5, C_PetJournal.GetPetStats(id or "0x0000000000000000"));
+        local petInfo = C_PetJournal.GetPetInfoTableByPetID(id);
+        local customName = petInfo and petInfo.customName;
+        local creatureName = petInfo and petInfo.name;
+        local icon = petInfo and petInfo.icon;
+        local level = petInfo and petInfo.petLevel;
+        -- rarity is 5th return of GetPetStats (1-4), NOT petLevel
+        local rarity = select(5, C_PetJournal.GetPetStats(id));
 
         A.currentPetName = customName or creatureName;
         A.currentPetIcon = icon;
@@ -1561,7 +1588,10 @@ function A:SetCurrentMountInfos()
     A:InitializeDB();
 
     local index = 1;
-    local name, icon, _, _, _, _, _, _, _, spellID = UnitBuff("player", index);
+    local auraData = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL");
+    local name = auraData and auraData.name or nil;
+    local icon = auraData and auraData.icon or nil;
+    local spellID = auraData and auraData.spellId or nil;
 
     -- One shot, woot!
     for k,v in ipairs(A.pamTable.mountsIds) do
@@ -1575,7 +1605,10 @@ function A:SetCurrentMountInfos()
     -- Continue checking
     while spellID do
         index = index + 1;
-        name, icon, _, _, _, _, _, _, _, spellID = UnitBuff("player", index);
+        local auraData = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL");
+        name = auraData and auraData.name or nil;
+        icon = auraData and auraData.icon or nil;
+        spellID = auraData and auraData.spellId or nil;
 
         for k,v in ipairs(A.pamTable.mountsIds) do
             if ( tContains(v, spellID) ) then
@@ -2136,7 +2169,7 @@ local function PAMMenu(self, level)
 
                                 -- Model
                                 A.menuModelFrame:SetDisplayInfo(vvv.creatureID);
-                                A.menuModelFrame:SetAnimation(618, -1);
+                                A.menuModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
 
                                 -- Frame pos
                                 local point, relativePoint = A:GetMenuModelFrameAnchor();
@@ -2176,7 +2209,7 @@ local function PAMMenu(self, level)
 
                                 -- Model
                                 A.menuModelFrame:SetDisplayInfo(vvv.creatureID);
-                                A.menuModelFrame:SetAnimation(618, -1);
+                                A.menuModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
 
                                 -- Frame pos
                                 local point, relativePoint = A:GetMenuModelFrameAnchor();
@@ -2354,13 +2387,19 @@ end
 -- end
 
 function A:COMPANION_UPDATE(event, companionType)
-    if ( companionType == "CRITTER" ) then
+    if ( companionType == "CRITTER" or companionType == nil ) then
         if ( InCombatLockdown() ) then
             A.delayedPetsTableUpdate = 1;
+            A.applyCurrentPetInfosDelayed = 1;
             return;
         end
 
-        A:BuildPetsTable();
+        if ( companionType == "CRITTER" ) then
+            A:BuildPetsTable();
+        end
+
+        -- Update pet button / Data Broker icon when the active companion changes
+        A:ApplyCurrentPetInfos();
     elseif ( companionType == "MOUNT" ) then
         if ( InCombatLockdown() ) then
             A.delayedMountsTableUpdate = 1;
@@ -2413,14 +2452,6 @@ function A:UNIT_AURA(event, unit)
     if ( A.db.profile.mountButtonIconCurrent or A.db.profile.dataBrokerTextMount
     or A.db.profile.dataBrokerTextMountIcon or A.db.profile.dataBrokerIconMode == "CURRENT_MOUNT" ) then
         A:ApplyCurrentMountInfos();
-    end
-end
-
-function A:SummonPetByGUID()
-    if ( A.db.profile.petButtonIconCurrent or A.db.profile.dataBrokerTextPet
-    or A.db.profile.dataBrokerTextPetIcon or A.db.profile.dataBrokerIconMode == "CURRENT_PET" ) then
-        A:CancelTimer(A.currentInfosTimer, 1);
-        A.currentInfosTimer = A:ScheduleTimer("ApplyCurrentPetInfos", 3);
     end
 end
 
@@ -2992,20 +3023,9 @@ end
 function A:LoadAddonConfig()
     A:DebugMessage("LoadAddonConfig() - Loading configuration addon");
 
-    local loaded, reason = LoadAddOn("PetsAndMountsConfig");
+    local loaded, reason = C_AddOns.LoadAddOn("PetsAndMountsConfig");
 
     if ( loaded ) then
-        local categories = INTERFACEOPTIONS_ADDONCATEGORIES;
-        local cat;
-
-        for i=1,#categories do
-            if ( categories[i].name == L["Pets & Mounts config loader"] ) then
-                cat = i;
-            end
-        end
-
-        table.remove(categories, cat);
-
         A:DebugMessage("LoadAddonConfig() - Successfully loaded configuration addon");
     elseif ( reason ) then
         reason = _G["ADDON_"..reason];
@@ -3016,61 +3036,25 @@ function A:LoadAddonConfig()
 end
 
 --- Add to blizzard options frame a temporary category
+-- Legacy Interface Options loader; Settings categories are registered when config loads.
 function A:AddToBlizzTemp()
-    local f  = CreateFrame("Frame", "PetsAndMountsTempConfigFrame");
-    f.name = L["Pets & Mounts config loader"];
-
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate");
-    b:SetSize(140, 22);
-    b:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -20);
-    b:SetText(L["Load configuration"]);
-    b:SetScript("OnClick", function(self)
-        local loaded = A:LoadAddonConfig();
-
-        if ( loaded ) then
-            InterfaceAddOnsList_Update();
-            InterfaceOptionsFrame_OpenToCategory(A.configFrameOptions);
-        end
-    end);
-
-    InterfaceOptions_AddCategory(f);
+    -- no-op on 10.0+/Midnight — OpenConfigPanel loads PetsAndMountsConfig on demand
 end
 
 --- Display configuration panel
 -- Load it if needed
 function A:OpenConfigPanel(cat)
-    if ( A.AceConfigDialog ) then
-        if ( cat ) then
-            cat = A["configFrame"..cat];
-
-            if ( not cat ) then
-                cat = A.configFrameOptions;
-            end
-        else
-            cat = A.configFrameOptions;
-        end
-
-        InterfaceOptionsFrame_OpenToCategory(cat);
-    else
+    if ( not A.AceConfigDialog ) then
         local loaded = A:LoadAddonConfig();
-
-        if ( loaded ) then
-            -- Yes I could have simply called this method again
-            -- Avoiding "infinite" loop > lazy
-            -- If there is an error in the config addon it will freeze the game until a stack overflow
-            if ( cat ) then
-                cat = A["configFrame"..cat];
-
-                if ( not cat ) then
-                    cat = A.configFrameOptions;
-                end
-            else
-                cat = A.configFrameOptions;
-            end
-
-            InterfaceOptionsFrame_OpenToCategory(cat);
-        end
+        if ( not loaded ) then return; end
     end
+
+    local categoryID = cat and A["configCategory"..cat] or A.configCategoryOptions;
+    if ( not categoryID ) then return; end
+
+    -- Midnight requires a numeric Settings category ID
+    categoryID = tonumber(categoryID) or categoryID;
+    Settings.OpenToCategory(categoryID);
 end
 
 --[[-------------------------------------------------------------------------------

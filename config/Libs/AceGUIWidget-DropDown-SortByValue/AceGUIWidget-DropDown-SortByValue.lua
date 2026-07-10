@@ -264,7 +264,8 @@ do
             local creatureID;
 
             if ( petsAndMountsGlobal:IsBattlePetID(value) ) then
-                creatureID = select(6, C_PetJournal.GetPetInfoByPetID(value));
+                local petInfo = C_PetJournal.GetPetInfoTableByPetID(value);
+                creatureID = petInfo and petInfo.speciesID or 0;
             else
                 creatureID = petsAndMountsGlobal:GetCreatureIDFromSpellID(value);
             end
@@ -274,7 +275,7 @@ do
             -- Model
             petsAndMountsGlobal.configModelFrame.rotation = 0;
             petsAndMountsGlobal.configModelFrame:SetDisplayInfo(creatureID);
-            petsAndMountsGlobal.configModelFrame:SetAnimation(618, -1);
+            petsAndMountsGlobal.configModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
 
             -- Frame pos
             petsAndMountsGlobal.configModelFrame:ClearAllPoints();

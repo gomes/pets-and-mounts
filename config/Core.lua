@@ -68,9 +68,9 @@ local dockAnchorsSelect =
 
 local reSummonValues =
 {
-    --@debug@
+    --[===[@debug@
     [10] = "10s",
-    --@end-debug@
+    --@end-debug@]===]
     [600] = L["10m"],
     [1800] = L["30m"],
     [3600] = L["1h"],
@@ -3150,7 +3150,7 @@ function A:OptionsRoot()
                             if ( A.db.profile.showConfigModelFrame ) then
                                 A.configModelFrame.rotation = 0;
                                 A.configModelFrame:SetDisplayInfo(creatureID);
-                                A.configModelFrame:SetAnimation(618, -1);
+                                A.configModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
                                 A.configModelFrame:SetDoBlend(false);
 
                                 -- Frame pos
@@ -3193,7 +3193,7 @@ function A:OptionsRoot()
                             if ( A.db.profile.showConfigModelFrame ) then
                                 A.configModelFrame.rotation = 0;
                                 A.configModelFrame:SetDisplayInfo(creatureID);
-                                A.configModelFrame:SetAnimation(618, -1);
+                                A.configModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
                                 A.configModelFrame:SetDoBlend(false);
 
                                 -- Frame pos
@@ -3482,7 +3482,7 @@ function A:OptionsPetsList()
                             if ( A.db.profile.showConfigModelFrame ) then
                                 A.configModelFrame.rotation = 0;
                                 A.configModelFrame:SetDisplayInfo(vvv.creatureID);
-                                A.configModelFrame:SetAnimation(618, -1);
+                                A.configModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
                                 A.configModelFrame:SetDoBlend(false);
 
                                 -- Frame pos
@@ -3756,7 +3756,7 @@ function A:OptionsMountsList()
                             if ( A.db.profile.showConfigModelFrame ) then
                                 A.configModelFrame.rotation = 0;
                                 A.configModelFrame:SetDisplayInfo(vvv.creatureID);
-                                A.configModelFrame:SetAnimation(618, -1);
+                                A.configModelFrame:SetAnimation(618); -- MountSelfIdle; variation -1 invalid in 12.0+
 
                                 -- Frame pos
                                 A.configModelFrame:ClearAllPoints()
@@ -4127,7 +4127,9 @@ function A:OptionsSets()
                                                 local set = A:BuildTempSetTable("PETS", A.db.profile.defaultSets.pets);
 
                                                 for k,v in pairs(set) do
-                                                    local _, customName, _, _, _, _, _, name = C_PetJournal.GetPetInfoByPetID(v);
+                                                    local petInfo = C_PetJournal.GetPetInfoTableByPetID(v);
+                                                    local customName = petInfo and petInfo.customName;
+local name = petInfo and petInfo.name;
 
                                                     if ( customName ) then
                                                         name = customName.." ("..name..")";
@@ -4715,7 +4717,9 @@ function A:OptionsSets()
                                         local set = A:BuildTempSetTable("PETS", A.db.profile.petsSetsByMapID[mapID]);
 
                                         for k,v in pairs(set) do
-                                            local _, customName, _, _, _, _, _, name = C_PetJournal.GetPetInfoByPetID(v);
+                                            local petInfo = C_PetJournal.GetPetInfoTableByPetID(v);
+                                            local customName = petInfo and petInfo.customName;
+local name = petInfo and petInfo.name;
 
                                             if ( customName ) then
                                                 name = customName.." ("..name..")";
@@ -5516,7 +5520,15 @@ function A:OptionsAbout()
             author =
             {
                 order = 4,
-                name = A.color.BLUE..L["Author"]..A.color.RESET..": "..GetAddOnMetadata("PetsAndMounts", "Author"),
+                name = A.color.BLUE..L["Author"]..A.color.RESET..": "..(C_AddOns.GetAddOnMetadata("PetsAndMounts", "Author") or "4ss3mbly"),
+                width = "full",
+                type = "description",
+                fontSize = "medium",
+            },
+            originalAuthor =
+            {
+                order = 4.5,
+                name = A.color.BLUE..L["Original author"]..A.color.RESET..": Shenton",
                 width = "full",
                 type = "description",
                 fontSize = "medium",
@@ -5995,14 +6007,14 @@ LibStub("AceConfig-3.0"):RegisterOptionsTable("PAMOptionsSets", A.OptionsSets);
 LibStub("AceConfig-3.0"):RegisterOptionsTable("PAMOptionsFavOverride", A.OptionsFavOverride);
 LibStub("AceConfig-3.0"):RegisterOptionsTable("PAMOptionsAbout", A.OptionsAbout);
 
--- Adding add-on options to Blizzard UI
-A.configFrameOptions = A.AceConfigDialog:AddToBlizOptions("PAMOptionsRoot",  L["Pets & Mounts"]);
---A.configFrameCustomMacros = A.AceConfigDialog:AddToBlizOptions("PAMOptionsCustomMacros", L["Custom macros"], L["Pets & Mounts"]);
-A.configFramePets = A.AceConfigDialog:AddToBlizOptions("PAMOptionsPetsList", L["Companions list"], L["Pets & Mounts"]);
-A.configFrameMounts = A.AceConfigDialog:AddToBlizOptions("PAMOptionsMountsList", L["Mounts list"], L["Pets & Mounts"]);
-A.configFrameSets = A.AceConfigDialog:AddToBlizOptions("PAMOptionsSets", L["Sets options"], L["Pets & Mounts"]);
-A.configFrameFavOverride = A.AceConfigDialog:AddToBlizOptions("PAMOptionsFavOverride", L["Favorites override"], L["Pets & Mounts"]);
-A.configFrameAbout = A.AceConfigDialog:AddToBlizOptions("PAMOptionsAbout", L["About"], L["Pets & Mounts"]);
+-- Adding add-on options to Blizzard UI (2nd return = Settings category ID for Midnight)
+A.configFrameOptions, A.configCategoryOptions = A.AceConfigDialog:AddToBlizOptions("PAMOptionsRoot",  L["Pets & Mounts"]);
+--A.configFrameCustomMacros, A.configCategoryCustomMacros = A.AceConfigDialog:AddToBlizOptions("PAMOptionsCustomMacros", L["Custom macros"], L["Pets & Mounts"]);
+A.configFramePets, A.configCategoryPets = A.AceConfigDialog:AddToBlizOptions("PAMOptionsPetsList", L["Companions list"], L["Pets & Mounts"]);
+A.configFrameMounts, A.configCategoryMounts = A.AceConfigDialog:AddToBlizOptions("PAMOptionsMountsList", L["Mounts list"], L["Pets & Mounts"]);
+A.configFrameSets, A.configCategorySets = A.AceConfigDialog:AddToBlizOptions("PAMOptionsSets", L["Sets options"], L["Pets & Mounts"]);
+A.configFrameFavOverride, A.configCategoryFavOverride = A.AceConfigDialog:AddToBlizOptions("PAMOptionsFavOverride", L["Favorites override"], L["Pets & Mounts"]);
+A.configFrameAbout, A.configCategoryAbout = A.AceConfigDialog:AddToBlizOptions("PAMOptionsAbout", L["About"], L["Pets & Mounts"]);
 
 -- Config frames OnShow
 A.configFrameOptions:HookScript("OnShow", function(self) A.configFocusFrame = self; end);
@@ -6072,5 +6084,5 @@ for k,v in ipairs(A.db.profile.favoriteMounts) do
 end
 if ( A:TableCount(A.db.global.savedSets.pets) > 0 or globalMounts or A:TableCount(A.db.global.savedSets.mounts) > 0 ) then
     LibStub("AceConfig-3.0"):RegisterOptionsTable("PAMOptionsImport", A.OptionsImport);
-    A.configFrameImport = A.AceConfigDialog:AddToBlizOptions("PAMOptionsImport", L["Import"], L["Pets & Mounts"]);
+    A.configFrameImport, A.configCategoryImport = A.AceConfigDialog:AddToBlizOptions("PAMOptionsImport", L["Import"], L["Pets & Mounts"]);
 end
