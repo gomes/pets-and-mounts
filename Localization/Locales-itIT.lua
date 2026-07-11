@@ -10,5 +10,4 @@ local L = LibStub("AceLocale-3.0"):NewLocale("PetsAndMounts", "itIT");
 
 if L then
 L["Original author"] = "Autore originale";
---@localization(locale="itIT", format="lua_additive_table", handle-subnamespaces="concat", handle-unlocalized="ignore")@
 end
