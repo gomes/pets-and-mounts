@@ -10,5 +10,4 @@ local L = LibStub("AceLocale-3.0"):NewLocale("PetsAndMounts", "koKR");
 
 if L then
 L["Original author"] = "원작자";
---@localization(locale="koKR", format="lua_additive_table", handle-subnamespaces="concat", handle-unlocalized="ignore")@
 end
