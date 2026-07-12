@@ -744,22 +744,37 @@ end
 -- 241 Qiraji Battle Tanks
 -- 242 Swift Spectral Gryphon (while dead mount)
 -- 247 Red Flying Cloud
--- 248 Flying
--- 254 Subdued Seahorse
+-- 248 Flying (classic/steady)
+-- 254 Subdued Seahorse / aquatic
 -- 269 Water Striders
 -- 284 Chauffeured Mechano-Hog
+-- 398 Kua'fon
+-- 402 Skyriding / Dragonriding
+-- 407 Aquatic skyriding (e.g. Deepstar Polyp)
+-- 408 Prototype Fleetpod
+-- 412 Otto / Ottuk (aquatic)
+-- 424 Skyriding-capable mounts
+-- 436 Wondrous Wavewhisker (aquatic skyriding)
 
 A.mountTypeToCategory =
 {
-    [230] = 1,
-    [231] = 1,
-    [232] = 4,
-    [241] = 1,
-    [247] = 2,
-    [248] = 2,
-    [254] = 4,
-    [269] = 1,
-    [284] = 1,
+    [230] = 1, -- Ground
+    [231] = 1, -- Turtles (treated as ground here; also forced aquatic list)
+    [232] = 4, -- Vashj'ir Seahorse
+    [241] = 1, -- Qiraji tanks
+    [242] = 2, -- Spectral gryphon
+    [247] = 2, -- Flying cloud
+    [248] = 2, -- Classic flying
+    [254] = 4, -- Aquatic
+    [269] = 1, -- Water striders
+    [284] = 1, -- Chauffeured
+    [398] = 2, -- Kua'fon
+    [402] = 2, -- Skyriding
+    [407] = 2, -- Aquatic/fly skyriding mounts usable as fly in flyable zones
+    [408] = 2, -- Prototype Fleetpod
+    [412] = 4, -- Otto / Ottuk
+    [424] = 2, -- Skyriding-capable
+    [436] = 2, -- Wavewhisker / aquatic skyriding
 };
 function A:GetMountCategory(mountType)
     if ( A.mountTypeToCategory[mountType] ) then
