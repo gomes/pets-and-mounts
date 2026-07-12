@@ -274,10 +274,10 @@ A.classesSpellsTable =
     },
     PRIEST =
     {
-        priestPowerWordShield = 17, -- Body and Soul - lvl 30 - tier 2 row 1 - id 4 -- Disci & Shadow
-        priestAngelicFeather = 121536, -- lvl 30 - tier 2 row 2 - id 5 -- Disci & Holy
+        priestPowerWordShield = 17, -- Body and Soul
+        priestAngelicFeather = 121536,
         priestLevitate = 1706, -- lvl 34
-        priestBodyAndMind = 214121, -- lvl 30 - tier 2 row 2 -- Holy
+        -- priestBodyAndMind = 214121, -- removed from game (was Holy talent)
     },
     ROGUE =
     {
@@ -403,6 +403,9 @@ function A:FormatMacroCastChain(parts, opts)
 end
 
 function A:SetClassSpells()
+    A.setClassSpellsRetries = A.setClassSpellsRetries or 0;
+    local missing;
+
     if ( A.classesSpellsTable[A.playerClass] ) then
         for k,v in pairs(A.classesSpellsTable[A.playerClass]) do
             local spellInfo = C_Spell.GetSpellInfo(v);
@@ -411,18 +414,28 @@ function A:SetClassSpells()
             local subtext = C_Spell.GetSpellSubtext and C_Spell.GetSpellSubtext(v) or nil;
 
             if ( not name or name == "" ) then
-                A:ScheduleTimer("SetClassSpells", 0.5);
-                A:SetPreClickFunction();
-                A:DebugMessage(("SetClassSpells() - Error with a spell. Spell: %d"):format(v));
-                return;
-            end
+                missing = missing or {};
+                missing[#missing + 1] = v;
+                A[k] = nil;
+            else
+                if ( subtext and subtext ~= "" ) then
+                    name = name.."("..subtext..")";
+                end
 
-            if ( subtext and subtext ~= "" ) then
-                name = name.."("..subtext..")";
+                A[k] = name;
             end
-
-            A[k] = name;
         end
+    end
+
+    -- Retry a few times for login cache lag; never loop forever on removed spells
+    if ( missing and #missing > 0 and A.setClassSpellsRetries < 5 ) then
+        A.setClassSpellsRetries = A.setClassSpellsRetries + 1;
+        A:ScheduleTimer("SetClassSpells", 0.5);
+        A:DebugMessage(("SetClassSpells() - Waiting for spell data (%s), retry %d/5"):format(table.concat(missing, ", "), A.setClassSpellsRetries));
+    elseif ( missing and #missing > 0 ) then
+        A:DebugMessage(("SetClassSpells() - Skipping unknown/removed spells: %s"):format(table.concat(missing, ", ")));
+    else
+        A.setClassSpellsRetries = 0;
     end
 
     A.classSpellsOK = 1;
@@ -605,8 +618,6 @@ function A:SetPriestPreClickMacro()
             return A:FormatMacroCast(A:GetClassSpellID("priestPowerWordShield"), { prefix = A.macroDismountString });
         elseif ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 2) and A.playerSpecTalentsInfos["row2"] == 1) then -- Angelic Feather
             return A:FormatMacroCast(A:GetClassSpellID("priestAngelicFeather"), { prefix = A.macroDismountString });
-        elseif ( A.playerSpecTalentsInfos["spec"] == 2 and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Mind
-            return A:FormatMacroCast(A:GetClassSpellID("priestBodyAndMind"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -1388,11 +1399,6 @@ function A:SetPostClickMacro(noCustom)
                     });
                 elseif ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 2) and A.playerSpecTalentsInfos["row2"] == 1) then -- Angelic Feather
                     A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestAngelicFeather"), {
-                        prefix = A.macroDismountString,
-                        condition = "[nomounted]",
-                    });
-                elseif ( A.playerSpecTalentsInfos["spec"] == 2 and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Mind
-                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestBodyAndMind"), {
                         prefix = A.macroDismountString,
                         condition = "[nomounted]",
                     });
