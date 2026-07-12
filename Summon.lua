@@ -783,6 +783,18 @@ function A:RandomMount(cat)
             id = A:GetRandomMount(A.pamTable.mountsIds[cat]);
         else
             A:DebugMessage(("RandomMount() - No mount for that cat - %i"):format(cat));
+            -- Fallbacks when the preferred category is empty (e.g. old DB before skyriding types)
+            if ( cat == 2 ) then
+                if ( A:GotRandomMount(A.currentMountsSet[3]) or A:GotRandomMount(A.pamTable.mountsIds[3]) ) then
+                    return A:RandomMount(3);
+                elseif ( A:GotRandomMount(A.currentMountsSet[1]) or A:GotRandomMount(A.pamTable.mountsIds[1]) ) then
+                    return A:RandomMount(1);
+                end
+            elseif ( cat == 1 ) then
+                if ( A:GotRandomMount(A.currentMountsSet[3]) or A:GotRandomMount(A.pamTable.mountsIds[3]) ) then
+                    return A:RandomMount(3);
+                end
+            end
             return nil;
         end
     -- ground, want hybrid when ground - fly
