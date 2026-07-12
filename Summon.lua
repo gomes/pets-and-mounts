@@ -559,6 +559,12 @@ end
 function A:SummonMountBySpellId(spellID)
     if ( not spellID ) then return nil; end
 
+    -- SummonByID while moving shows ERR and still returns; treat as failure so class fallbacks can run
+    if ( IsPlayerMoving and IsPlayerMoving() ) then
+        A:DebugMessage("SummonMountBySpellId() - skipped while moving");
+        return nil;
+    end
+
     local id = A:GetMountIDFromSpellID(spellID);
 
     if ( id ) then
@@ -709,31 +715,34 @@ end
 -- If mounted dismount
 -- If not choose a random mount from databases
 -- @param cat Mount category, if nil set by A:SetMountCat()
+-- @return 1 if an action was taken (dismount/vehicle/summon), nil otherwise
 function A:RandomMount(cat)
     A:InitializeDB();
 
-    if ( not A.db.profile.dismountFlying and IsMounted() and IsFlying() ) then
+    -- Allow dismount in water even if still flagged as flying (e.g. fell into a lake on a flyer)
+    local swimming = A:IsSwimming();
+    if ( not A.db.profile.dismountFlying and IsMounted() and IsFlying() and not swimming ) then
         A:DebugMessage("RandomMount() - Flying no dismount");
-        return;
+        return nil;
     elseif ( IsMounted() ) then
-        A:DebugMessage("RandomMount() - Dismount");
+        A:DebugMessage(swimming and "RandomMount() - Dismount (swimming)" or "RandomMount() - Dismount");
         Dismount();
-        return;
+        return 1;
     elseif ( A.db.profile.vehicleExit and A:IsPlayerInVehicle() ) then
         VehicleExit();
-        return;
+        return 1;
     end
 
     if ( A:IsMountSummonFiltered() ) then
         A:DebugMessage("RandomMount() - No summon filter");
-        return;
+        return nil;
     end
 
     if ( A.db.profile.copyTargetMount ) then
         if ( UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") ) then
             local id = A:GetOtherPlayerMount("target");
 
-            if ( A:SummonMountBySpellId(id) ) then return; end
+            if ( A:SummonMountBySpellId(id) ) then return 1; end
         end
     end
 
@@ -741,7 +750,7 @@ function A:RandomMount(cat)
         if ( UnitExists("mouseover") and UnitIsPlayer("mouseover") and not UnitIsUnit("mouseover", "player") ) then
             local id = A:GetOtherPlayerMount("mouseover");
 
-            if ( A:SummonMountBySpellId(id) ) then return; end
+            if ( A:SummonMountBySpellId(id) ) then return 1; end
         end
     end
 
@@ -774,7 +783,7 @@ function A:RandomMount(cat)
             id = A:GetRandomMount(A.pamTable.mountsIds[cat]);
         else
             A:DebugMessage(("RandomMount() - No mount for that cat - %i"):format(cat));
-            return;
+            return nil;
         end
     -- ground, want hybrid when ground - fly
     elseif ( (cat == 1 and not A.db.profile.noHybridWhenGround) or (cat == 2 and not A.db.profile.noHybridWhenFly) ) then
@@ -878,15 +887,21 @@ function A:RandomMount(cat)
             id = A:GetRandomMount(A.pamTable.mountsIds[3]);
         else
             A:DebugMessage(("RandomMount() - No mount for that cat - %i"):format(cat));
-            return;
+            return nil;
         end
     else -- Unsupported cat
-        return;
+        return nil;
     end
 
-    if ( A:SummonMountBySpellId(id) ) then return; end
+    if ( A:SummonMountBySpellId(id) ) then return 1; end
+
+    -- Moving: SummonByID is skipped on purpose so class fallbacks can run — not a "cannot use" error
+    if ( IsPlayerMoving and IsPlayerMoving() ) then
+        return nil;
+    end
 
     -- If we are here the player cannot use the mount (horde/alliance specific, achievement, level, etc)
     local spellInfo = C_Spell.GetSpellInfo(id);
     A:Message(L["Tried to summon %s. It is a mount this toon cannot use (Horde/Alliance specific, achievement, level, etc)."]:format(spellInfo and spellInfo.name or id), 1);
+    return nil;
 end

@@ -11,7 +11,7 @@ local L = A.L;
 
 -- GLOBALS: UnitIsFeignDeath, UnitCastingInfo, UnitChannelInfo, UnitIsDeadOrGhost, InCombatLockdown
 -- GLOBALS: GetNumLootItems, IsMounted, IsFlying, IsFalling, UnitHasVehicleUI, UnitOnTaxi
--- GLOBALS: HasFullControl, GetBarberShopStyleInfo, IsIndoors
+-- GLOBALS: HasFullControl, BarberShopFrame, IsIndoors
 
 -- Used in PLAYER_ENTERING_WORLD event
 -- When it is still true it will permit actions we only want when entering world
@@ -452,7 +452,8 @@ A.petsSummonFilters =
     { -- 15
         name = L["Barber"],
         func = function()
-            if ( GetBarberShopStyleInfo(1) ) then return 1; end
+            -- GetBarberShopStyleInfo removed; C_BarberShop only works while at the shop.
+            if ( BarberShopFrame and BarberShopFrame:IsShown() ) then return 1; end
             return nil;
         end,
         option = nil,
