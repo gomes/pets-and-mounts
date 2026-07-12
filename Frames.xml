@@ -34,7 +34,8 @@
         <HighlightTexture alphaMode="ADD" file="Interface\Buttons\ButtonHilight-Square"/>
         <Scripts>
             <OnLoad>
-                self:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp");
+                -- AnyUp+AnyDown required for SecureActionButton when ActionButtonUseKeyDown varies
+                self:RegisterForClicks("AnyUp", "AnyDown");
             </OnLoad>
             <OnEnter>
                 PetsAndMountsGlobal:SetTooltip(self);
@@ -83,7 +84,8 @@
         <HighlightTexture alphaMode="ADD" file="Interface\Buttons\ButtonHilight-Square"/>
         <Scripts>
             <OnLoad>
-                self:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp");
+                -- AnyUp+AnyDown required for SecureActionButton when ActionButtonUseKeyDown varies
+                self:RegisterForClicks("AnyUp", "AnyDown");
             </OnLoad>
             <OnEnter>
                 PetsAndMountsGlobal:SetTooltip(self);

@@ -25,7 +25,7 @@ local tonumber = tonumber;
 -- GLOBALS: ToggleDropDownMenu, GameTooltip, PetsAndMountsSecureButtonMounts, PetsAndMountsSecureButtonPets
 -- GLOBALS: GetScreenWidth, IsMounted, GetUnitSpeed, IsPlayerMoving, GetTalentInfo, GetTalentRowSelectionInfo, GetInstanceInfo
 -- GLOBALS: GetGlyphSocketInfo, IsFalling, NUM_GLYPH_SLOTS, GetShapeshiftForm, IsEquippedItemType
--- GLOBALS: ShentonFishingGlobal, GetActiveSpecGroup, IsIndoors, IsAltKeyDown, PlayerHasToy
+-- GLOBALS: ShentonFishingGlobal, GetActiveSpecGroup, IsIndoors, IsAltKeyDown, PlayerHasToy, GetCVarBool
 
 --[[-------------------------------------------------------------------------------
     Bindings
@@ -1018,18 +1018,47 @@ function A:ApplyClassMovementFallback(button)
     return nil;
 end
 
+--- True when this PreClick phase matches ActionButtonUseKeyDown (avoid double-fire)
+function A:ShouldHandleSecurePreClick(down)
+    local useKeyDown = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown");
+    if ( useKeyDown ) then
+        return down and true or nil;
+    end
+
+    return (not down) and true or nil;
+end
+
+--- Apply a pre-click mount macro. Plain /pammount runs in Lua (reliable);
+-- cast/dismount macros stay on the secure button for the same click.
+function A:ApplyMountPreClickMacro(button, macro)
+    if ( not macro or macro == "" or macro == "/pammount" ) then
+        button:SetAttribute("type", "macro");
+        button:SetAttribute("macrotext", nil);
+        A:RandomMount();
+        A:DebugMessage("Preclick: RandomMount() via Lua");
+        return;
+    end
+
+    button:SetAttribute("type", "macro");
+    button:SetAttribute("macrotext", macro);
+    A:DebugMessage(("Preclick macro set to: %s"):format(tostring(macro)));
+end
+
 --- PreClick callback
-function A:PreClickMount(button, clickedBy)
+-- @param down true on mouse/key down, false on up (SecureActionButton fires both when registered)
+function A:PreClickMount(button, clickedBy, down)
     if ( not A.addonRunning or InCombatLockdown() ) then return; end
+    if ( not A:ShouldHandleSecurePreClick(down) ) then return; end
 
     if ( clickedBy == "LeftButton" ) then
-        -- Shift+Click: use slash macro (not Lua+nil macrotext). Keeps normal clicks intact.
+        -- Shift+Click: summon category in Lua
         if ( A.db.profile.mountButtonshiftClickEnabled and IsShiftKeyDown() ) then
-            local cmd = A:GetShiftClickMountCommand();
+            local cat = tonumber(A.db.profile.mountButtonshiftClickCat) or 5;
             button:SetAttribute("type", "macro");
-            button:SetAttribute("macrotext", cmd);
+            button:SetAttribute("macrotext", nil);
             A:ApplyShiftClickMountAttributes(button);
-            A:DebugMessage(("Preclick shift-click macro: %s"):format(cmd));
+            A:RandomMount(cat);
+            A:DebugMessage(("Preclick shift-click RandomMount(%s)"):format(tostring(cat)));
             return;
         end
 
@@ -1043,11 +1072,12 @@ function A:PreClickMount(button, clickedBy)
             A:ApplyShiftClickMountAttributes(button);
             return;
         elseif ( IsMounted() ) then
-            -- Still mounted (e.g. flyer in water): dismount first, skip special item/spell casts
+            -- Still mounted (e.g. flyer in water): dismount via Lua RandomMount
             button:SetAttribute("type", "macro");
-            button:SetAttribute("macrotext", "/pammount");
+            button:SetAttribute("macrotext", nil);
             A:ApplyShiftClickMountAttributes(button);
-            A:DebugMessage("Preclick mounted -> /pammount (dismount)");
+            A:RandomMount();
+            A:DebugMessage("Preclick mounted -> RandomMount() (dismount)");
         else
             -- Special mounts
             if ( A.db.profile.telaariTalbuk and A:IsTelaariTalbukUsable() and not A:IsSwimming() and not A:IsFlyable() and not IsIndoors() and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 165803 - Telaari Talbuk / 164222 - Frostwolf War Wolf
@@ -1110,9 +1140,7 @@ function A:PreClickMount(button, clickedBy)
                             if ( A.db.profile.classesMacrosEnabled ) then
                                 A:PreClickMountShaman(button);
                             else
-                                local macro = A:PreClickFunc();
-                                button:SetAttribute("type", "macro");
-                                button:SetAttribute("macrotext", macro);
+                                A:ApplyMountPreClickMacro(button, A:PreClickFunc());
                             end
                         else
                             local macro = A:FormatMacroCast(waterWalkingID);
@@ -1121,29 +1149,20 @@ function A:PreClickMount(button, clickedBy)
                             A:DebugMessage(("Preclick macro set to: %s"):format(macro));
                         end
                     else
-                        local macro = A:PreClickFunc();
-                        button:SetAttribute("type", "macro");
-                        button:SetAttribute("macrotext", macro);
-                        A:DebugMessage(("Preclick macro set to: %s"):format(macro));
+                        A:ApplyMountPreClickMacro(button, A:PreClickFunc());
                     end
                 else
                     if ( A.playerClass == "SHAMAN" and A.db.profile.classesMacrosEnabled ) then
                         A:PreClickMountShaman(button);
                     else
-                        local macro = A:PreClickFunc();
-                        button:SetAttribute("type", "macro");
-                        button:SetAttribute("macrotext", macro);
-                        A:DebugMessage(("Preclick macro set to: %s"):format(macro));
+                        A:ApplyMountPreClickMacro(button, A:PreClickFunc());
                     end
                 end
             else
                 if ( A.playerClass == "SHAMAN" and A.db.profile.classesMacrosEnabled and not A.db.profile.customMountMacrosEnabled ) then
                     A:PreClickMountShaman(button);
                 else
-                    local macro = A:PreClickFunc();
-                    button:SetAttribute("type", "macro");
-                    button:SetAttribute("macrotext", macro);
-                    A:DebugMessage(("Preclick macro set to: %s"):format(tostring(macro)));
+                    A:ApplyMountPreClickMacro(button, A:PreClickFunc());
                 end
             end
 
@@ -1167,8 +1186,9 @@ function A:PreClickMount(button, clickedBy)
     end
 end
 
-function A:PreClickMountForced(button, clickedBy)
+function A:PreClickMountForced(button, clickedBy, down)
     if ( not A.addonRunning or InCombatLockdown() ) then return; end
+    if ( not A:ShouldHandleSecurePreClick(down) ) then return; end
 
     -- Get mount summon command
     local command, isCustom = A:GetMountCommand(button);
@@ -1184,18 +1204,6 @@ function A:PreClickMountForced(button, clickedBy)
                 command = ("/cancelform [form]\n%s"):format(command);
             end
         end
-    -- Hunter
-    --elseif ( A.playerClass == "HUNTER" ) then
-    -- Mage
-    --elseif ( A.playerClass == "MAGE" ) then
-    -- Monk
-    --elseif ( A.playerClass == "MONK" ) then
-    -- Paladin
-    --elseif ( A.playerClass == "PALADIN" ) then
-    -- Priest
-    --elseif ( A.playerClass == "PRIEST" ) then
-    -- Rogue
-    --elseif ( A.playerClass == "ROGUE" ) then
     -- Shaman
     elseif ( A.playerClass == "SHAMAN" ) then
         if ( A.db.profile.noMountAfterCancelForm ) then
@@ -1203,10 +1211,31 @@ function A:PreClickMountForced(button, clickedBy)
         else
             command = ("/cancelform [form]\n%s"):format(command);
         end
-    -- Warlock
-    --elseif ( A.playerClass == "WARLOCK" ) then
-    -- Warrior
-    --elseif ( A.playerClass == "WARRIOR" ) then
+    end
+
+    -- Prefer Lua summon for plain /pam* commands (same KeyDown reliability as /pammount)
+    local catByCommand =
+    {
+        ["/pammount"] = true,
+        ["/pamground"] = 1,
+        ["/pamfly"] = 2,
+        ["/pamhybrid"] = 3,
+        ["/pamaquatic"] = 4,
+        ["/pampassengers"] = 5,
+        ["/pamsurface"] = 6,
+        ["/pamrepair"] = 7,
+    };
+    local cat = catByCommand[command];
+    if ( cat ~= nil ) then
+        button:SetAttribute("type", "macro");
+        button:SetAttribute("macrotext", nil);
+        if ( cat == true ) then
+            A:RandomMount();
+        else
+            A:RandomMount(cat);
+        end
+        A:DebugMessage(("Preclick forced: RandomMount(%s)"):format(tostring(cat == true and "auto" or cat)));
+        return;
     end
 
     button:SetAttribute("type", "macro");
@@ -1507,8 +1536,9 @@ end
 -------------------------------------------------------------------------------]]--
 
 --- PreClick callback
-function A:PreClickPet(button, clickedBy)
+function A:PreClickPet(button, clickedBy, down)
     if ( not A.addonRunning or InCombatLockdown() ) then return; end
+    if ( not A:ShouldHandleSecurePreClick(down) ) then return; end
 
     if ( clickedBy == "LeftButton" ) then
         if ( IsShiftKeyDown() ) then
@@ -1521,7 +1551,9 @@ function A:PreClickPet(button, clickedBy)
             A:ToggleButtonLock(button:GetName());
         else
             button:SetAttribute("type", "macro");
-            button:SetAttribute("macrotext", "/pampet");
+            button:SetAttribute("macrotext", nil);
+            A:RandomPet(1);
+            A:DebugMessage("Preclick pet: RandomPet() via Lua");
         end
     elseif ( clickedBy == "RightButton" ) then
         button:SetAttribute("type", "macro");
@@ -1822,16 +1854,19 @@ function A:SetButtons()
     -- Icon
 
     -- Explicit SetScript + SetAttribute required for SecureActionButtonTemplate (WoW 12.0+)
+    PetsAndMountsSecureButtonPets:RegisterForClicks("AnyUp", "AnyDown");
     PetsAndMountsSecureButtonPets:SetScript("PreClick", function(self, button, down)
-        A:PreClickPet(self, button);
+        A:PreClickPet(self, button, down);
     end);
     PetsAndMountsSecureButtonPets:SetAttribute("type", "macro");
     PetsAndMountsSecureButtonPets:SetAttribute("macrotext", "/pampet");
 
+    PetsAndMountsSecureButtonMounts:RegisterForClicks("AnyUp", "AnyDown");
     PetsAndMountsSecureButtonMounts:SetScript("PreClick", function(self, button, down)
-        A:PreClickMount(self, button);
+        A:PreClickMount(self, button, down);
     end);
     PetsAndMountsSecureButtonMounts:SetScript("PostClick", function(self, button, down)
+        if ( not A:ShouldHandleSecurePreClick(down) ) then return; end
         A:PostClickMount(self, button);
     end);
     PetsAndMountsSecureButtonMounts:SetAttribute("type", "macro");
@@ -1839,27 +1874,21 @@ function A:SetButtons()
     A:ApplyShiftClickMountAttributes(PetsAndMountsSecureButtonMounts);
 
     -- Other mount buttons too
-    PetsAndMountsSecureButtonPassengers:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonFlying:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonGround:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonAquatic:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonSurface:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonRepair:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
-    PetsAndMountsSecureButtonHybrid:SetScript("PreClick", function(self, button, down)
-        A:PreClickMountForced(self, button);
-    end);
+    local forcedButtons = {
+        PetsAndMountsSecureButtonPassengers,
+        PetsAndMountsSecureButtonFlying,
+        PetsAndMountsSecureButtonGround,
+        PetsAndMountsSecureButtonAquatic,
+        PetsAndMountsSecureButtonSurface,
+        PetsAndMountsSecureButtonRepair,
+        PetsAndMountsSecureButtonHybrid,
+    };
+    for _, forcedButton in ipairs(forcedButtons) do
+        forcedButton:RegisterForClicks("AnyUp", "AnyDown");
+        forcedButton:SetScript("PreClick", function(self, button, down)
+            A:PreClickMountForced(self, button, down);
+        end);
+    end
 
     -- Refresh config panel
     A:NotifyChangeForAll();
