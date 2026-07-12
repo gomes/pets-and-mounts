@@ -465,6 +465,20 @@ function A:GetPlayerSpecTalentsInfos()
 end
 
 function A:PlayerGotBuff(searchTerm)
+    -- Spell ID (locale-safe)
+    if ( type(searchTerm) == "number" ) then
+        if ( C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID ) then
+            if ( C_UnitAuras.GetPlayerAuraBySpellID(searchTerm) ) then
+                return 1;
+            end
+            return nil;
+        end
+
+        local spellInfo = C_Spell.GetSpellInfo(searchTerm);
+        searchTerm = spellInfo and spellInfo.name;
+        if ( not searchTerm ) then return nil; end
+    end
+
     if ( type(searchTerm) == "string" ) then
         for i=1,40 do
             local buffAura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL");

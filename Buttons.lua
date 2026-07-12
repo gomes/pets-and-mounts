@@ -23,7 +23,7 @@ local tonumber = tonumber;
 -- GLOBALS: BINDING_HEADER_PETSANDMOUNTS, InCombatLockdown, GetSpellInfo, IsFlyableArea, IsSpellKnown
 -- GLOBALS: IsShiftKeyDown, IsControlKeyDown, GetItemCount, GetItemInfo, UIDropDownMenu_SetAnchor
 -- GLOBALS: ToggleDropDownMenu, GameTooltip, PetsAndMountsSecureButtonMounts, PetsAndMountsSecureButtonPets
--- GLOBALS: GetScreenWidth, IsMounted, GetUnitSpeed, GetTalentInfo, GetTalentRowSelectionInfo, GetInstanceInfo
+-- GLOBALS: GetScreenWidth, IsMounted, GetUnitSpeed, IsPlayerMoving, GetTalentInfo, GetTalentRowSelectionInfo, GetInstanceInfo
 -- GLOBALS: GetGlyphSocketInfo, IsFalling, NUM_GLYPH_SLOTS, GetShapeshiftForm, IsEquippedItemType
 -- GLOBALS: ShentonFishingGlobal, GetActiveSpecGroup, IsIndoors, IsAltKeyDown, PlayerHasToy
 
@@ -140,6 +140,36 @@ A.mountButtonCommands =
     ["PetsAndMountsSecureButtonRepair"] = "/pamrepair",
     ["PetsAndMountsSecureButtonHybrid"] = "/pamhybrid",
 };
+
+--- Slash command for the configured Shift+Click mount category
+A.shiftClickMountCommands =
+{
+    [1] = "/pamground",
+    [2] = "/pamfly",
+    [3] = "/pamhybrid",
+    [4] = "/pamaquatic",
+    [5] = "/pampassengers",
+    [6] = "/pamsurface",
+    [7] = "/pamrepair",
+};
+
+function A:GetShiftClickMountCommand()
+    local cat = tonumber(A.db.profile.mountButtonshiftClickCat) or 5;
+    return A.shiftClickMountCommands[cat] or "/pampassengers";
+end
+
+--- Apply or clear secure shift-click overrides (no Lua IsShiftKeyDown — avoids stealing normal clicks)
+function A:ApplyShiftClickMountAttributes(button)
+    if ( A.db.profile.mountButtonshiftClickEnabled ) then
+        local cmd = A:GetShiftClickMountCommand();
+        button:SetAttribute("shift-type*", "macro");
+        button:SetAttribute("shift-macrotext*", cmd);
+    else
+        button:SetAttribute("shift-type*", nil);
+        button:SetAttribute("shift-macrotext*", nil);
+    end
+end
+
 function A:GetMountCommand(button)
     button = button:GetName();
 
@@ -271,12 +301,114 @@ A.classesSpellsTable =
     },
 };
 
+--- Locale-safe class spell ID (from classesSpellsTable, never a translated name)
+function A:GetClassSpellID(key)
+    local classTable = A.classesSpellsTable[A.playerClass];
+    return classTable and classTable[key] or nil;
+end
+
+--- Resolve spell ID to the client's localized macro name (with subtext when needed)
+-- Prefer the name cached by SetClassSpells; never use hardcoded English fallbacks.
+function A:GetMacroSpellName(spellID)
+    if ( not spellID ) then
+        return nil;
+    end
+
+    local classTable = A.classesSpellsTable[A.playerClass];
+    if ( classTable ) then
+        for key, id in pairs(classTable) do
+            if ( id == spellID and type(A[key]) == "string" and A[key] ~= "" ) then
+                return A[key];
+            end
+        end
+    end
+
+    local spellInfo = C_Spell.GetSpellInfo(spellID);
+    local name = spellInfo and spellInfo.name;
+    if ( not name or name == "" ) then
+        return nil;
+    end
+
+    local subtext = C_Spell.GetSpellSubtext and C_Spell.GetSpellSubtext(spellID) or nil;
+    if ( subtext and subtext ~= "" ) then
+        name = name.."("..subtext..")";
+    end
+
+    return name;
+end
+
+--- Build /cast using the localized spell name (locale-safe via GetSpellInfo / SetClassSpells)
+-- opts.prefix = optional lines before cast (e.g. dismount)
+-- opts.condition = e.g. "[nomounted]" or "[nomounted,indoors]"
+-- opts.bang = true for /cast !
+function A:FormatMacroCast(spellID, opts)
+    opts = opts or {};
+    local name = A:GetMacroSpellName(spellID);
+    if ( not name ) then
+        return opts.prefix or "/pammount";
+    end
+
+    local castLine;
+    local condition = opts.condition;
+
+    if ( opts.bang ) then
+        if ( condition and condition ~= "" ) then
+            castLine = ("/cast !%s %s"):format(condition, name);
+        else
+            castLine = ("/cast !%s"):format(name);
+        end
+    elseif ( condition and condition ~= "" ) then
+        castLine = ("/cast %s %s"):format(condition, name);
+    else
+        castLine = ("/cast %s"):format(name);
+    end
+
+    if ( opts.prefix and opts.prefix ~= "" ) then
+        return opts.prefix.."\n"..castLine;
+    end
+
+    return castLine;
+end
+
+--- Multi-option /cast with localized spell names
+-- parts = { { condition = "[swimming]", id = 783 }, { condition = "[indoors]", id = 768 }, { id = 783 } }
+function A:FormatMacroCastChain(parts, opts)
+    opts = opts or {};
+    if ( not parts or #parts == 0 ) then
+        return opts.prefix or "/pammount";
+    end
+
+    local segments = {};
+    for _, part in ipairs(parts) do
+        local name = A:GetMacroSpellName(part.id);
+        if ( name ) then
+            if ( part.condition and part.condition ~= "" ) then
+                segments[#segments + 1] = ("%s %s"):format(part.condition, name);
+            else
+                segments[#segments + 1] = name;
+            end
+        end
+    end
+
+    if ( #segments == 0 ) then
+        return opts.prefix or "/pammount";
+    end
+
+    local castLine = "/cast "..table.concat(segments, "; ");
+    if ( opts.prefix and opts.prefix ~= "" ) then
+        return opts.prefix.."\n"..castLine;
+    end
+
+    return castLine;
+end
+
 function A:SetClassSpells()
     if ( A.classesSpellsTable[A.playerClass] ) then
         for k,v in pairs(A.classesSpellsTable[A.playerClass]) do
             local spellInfo = C_Spell.GetSpellInfo(v);
             local name = spellInfo and spellInfo.name or nil;
-            local subtext = spellInfo and spellInfo.subtext or nil;
+            -- subtext is not on GetSpellInfo's table in modern API
+            local subtext = C_Spell.GetSpellSubtext and C_Spell.GetSpellSubtext(v) or nil;
 
             if ( not name or name == "" ) then
                 A:ScheduleTimer("SetClassSpells", 0.5);
@@ -323,8 +455,8 @@ end
 --- Death Knight preclick macro
 -- For DK we handle Death's Advance and Unholy Presence when moving
 function A:SetDeathKnightPreClickMacro()
-    if ( A.playerLevel >= 60 and not IsMounted() and GetUnitSpeed("player") > 0 ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.deathKnightWraithWalk);
+    if ( A.playerLevel >= 60 and A:IsPlayerMovingForMountFallback() ) then
+        return A:FormatMacroCast(A:GetClassSpellID("deathKnightWraithWalk"), { prefix = A.macroDismountString });
     else
         return "/pammount";
     end
@@ -333,19 +465,27 @@ end
 --- Druid pre click macro
 -- For Druids we handle flight forms
 function A:SetDruidPreClickMacro()
+    local cat = A:GetClassSpellID("druidCatForm");
+    local travel = A:GetClassSpellID("druidTravelForm");
+
     if ( A.db.profile.druidWantFormsOnMove ) then
-        if ( GetUnitSpeed("player") > 0 ) then
-            -- if ( A:IsGlyphed(114338) and A.playerLevel >= 58 and A:IsFlyable() and not IsMounted() ) then
-                -- return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidFlightForm);
+        if ( A:IsPlayerMovingForMountFallback() ) then
             if ( A.playerLevel >= 16 and not IsMounted() ) then
-                return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidTravelForm);
+                return A:FormatMacroCastChain({
+                    { condition = "[swimming]", id = travel },
+                    { condition = "[indoors]", id = cat },
+                    { id = travel },
+                }, { prefix = A.macroDismountString });
             elseif ( A.playerLevel >= 6 and not IsMounted() ) then
-                return ("%s\n/cast %s"):format(A.macroDismountString, A.druidCatForm);
+                return A:FormatMacroCast(cat, { prefix = A.macroDismountString });
             else
                 return "/pammount";
             end
         elseif ( IsIndoors() ) then
-            return ("%s\n/cast [swimming] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm);
+            return A:FormatMacroCastChain({
+                { condition = "[swimming]", id = travel },
+                { id = cat },
+            }, { prefix = A.macroDismountString });
         elseif ( GetShapeshiftForm(1) > 0 and not A:IsBoomkin() ) then
             if ( A.db.profile.noMountAfterCancelForm ) then
                 return "/cancelform [form]";
@@ -357,16 +497,23 @@ function A:SetDruidPreClickMacro()
         end
     else
         if ( A.playerLevel >= 58 and A:IsFlyable() and not IsMounted() ) then
-            -- if ( A:IsGlyphed(114338) ) then
-                -- return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidFlightForm);
-            -- else
-                return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidTravelForm);
-            -- end
+            return A:FormatMacroCastChain({
+                { condition = "[swimming]", id = travel },
+                { condition = "[indoors]", id = cat },
+                { id = travel },
+            }, { prefix = A.macroDismountString });
         elseif ( A.playerLevel >= 20 and A:CanRide() and not IsMounted() ) then
-            if ( GetUnitSpeed("player") > 0 and not IsMounted() ) then
-                return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidTravelForm);
+            if ( A:IsPlayerMovingForMountFallback() ) then
+                return A:FormatMacroCastChain({
+                    { condition = "[swimming]", id = travel },
+                    { condition = "[indoors]", id = cat },
+                    { id = travel },
+                }, { prefix = A.macroDismountString });
             elseif ( IsIndoors() ) then
-                return ("%s\n/cast [swimming] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm);
+                return A:FormatMacroCastChain({
+                    { condition = "[swimming]", id = travel },
+                    { id = cat },
+                }, { prefix = A.macroDismountString });
             elseif ( GetShapeshiftForm(1) > 0 and not A:IsBoomkin() ) then
                 if ( A.db.profile.noMountAfterCancelForm ) then
                     return "/cancelform [form]";
@@ -377,9 +524,13 @@ function A:SetDruidPreClickMacro()
                 return "/pammount";
             end
         elseif ( A.playerLevel >= 16 and not IsMounted() ) then
-            return ("%s\n/cast [swimming] %s; [indoors] %s; %s"):format(A.macroDismountString, A.druidTravelForm, A.druidCatForm, A.druidTravelForm);
+            return A:FormatMacroCastChain({
+                { condition = "[swimming]", id = travel },
+                { condition = "[indoors]", id = cat },
+                { id = travel },
+            }, { prefix = A.macroDismountString });
         elseif ( A.playerLevel >= 6 and not IsMounted() ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.druidCatForm);
+            return A:FormatMacroCast(cat, { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -389,8 +540,8 @@ end
 --- Hunter pre click macro
 -- For Hunters we handle speed aspects when moving
 function A:SetHunterPreClickMacro()
-    if ( A.playerLevel >= 5 and not IsMounted() and GetUnitSpeed("player") > 0 ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.hunterAspectCheetah);
+    if ( A.playerLevel >= 5 and A:IsPlayerMovingForMountFallback() ) then
+        return A:FormatMacroCast(A:GetClassSpellID("hunterAspectCheetah"), { prefix = A.macroDismountString });
     else
         return "/pammount";
     end
@@ -400,13 +551,10 @@ end
 -- For Mages we handle Blink when moving and Slow Fall when falling
 function A:SetMagePreClickMacro()
     if ( A.db.profile.mageSlowFall and IsFalling() and A.playerLevel >= 32 ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.mageSlowFall);
-    elseif ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
-        local specGroup = GetActiveSpecGroup();
-        local selected = select(4, GetTalentInfo(1, 2, specGroup));
-
+        return A:FormatMacroCast(A:GetClassSpellID("mageSlowFall"), { prefix = A.macroDismountString });
+    elseif ( A:IsPlayerMovingForMountFallback() ) then
         if ( A.playerLevel >= 7 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.mageBlink);
+            return A:FormatMacroCast(A:GetClassSpellID("mageBlink"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -419,12 +567,12 @@ end
 -- For monks we handle Roll and Flying Serpent Kick
 function A:SetMonkPreClickMacro()
     if ( IsFalling() and IsSpellKnown(125883, false) ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.monkZenFlight);
-    elseif ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
+        return A:FormatMacroCast(A:GetClassSpellID("monkZenFlight"), { prefix = A.macroDismountString });
+    elseif ( A:IsPlayerMovingForMountFallback() ) then
         if ( A.db.profile.monkPreferSerpentKick and A.playerLevel >= 18 and A.playerSpecTalentsInfos["spec"] == 3 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.monkFlyingSerpentKick);
+            return A:FormatMacroCast(A:GetClassSpellID("monkFlyingSerpentKick"), { prefix = A.macroDismountString });
         elseif ( A.playerLevel >= 5 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.monkRoll);
+            return A:FormatMacroCast(A:GetClassSpellID("monkRoll"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -436,9 +584,9 @@ end
 --- Paladin pre click macro
 -- For Paladins we handle Speed of Light when moving
 function A:SetPaladinPreClickMacro()
-    if ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
+    if ( A:IsPlayerMovingForMountFallback() ) then
         if ( A.playerLevel >= 28 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.paladinDivineSteed);
+            return A:FormatMacroCast(A:GetClassSpellID("paladinDivineSteed"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -451,14 +599,14 @@ end
 -- For Priests we handle Body and Soul and Angelic Feather when moving
 function A:SetPriestPreClickMacro()
     if ( A.db.profile.priestLevitate and IsFalling() and A.playerLevel >= 34 ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.priestLevitate);
-    elseif ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
+        return A:FormatMacroCast(A:GetClassSpellID("priestLevitate"), { prefix = A.macroDismountString });
+    elseif ( A:IsPlayerMovingForMountFallback() ) then
         if ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 3) and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Soul
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.priestPowerWordShield);
+            return A:FormatMacroCast(A:GetClassSpellID("priestPowerWordShield"), { prefix = A.macroDismountString });
         elseif ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 2) and A.playerSpecTalentsInfos["row2"] == 1) then -- Angelic Feather
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.priestAngelicFeather);
+            return A:FormatMacroCast(A:GetClassSpellID("priestAngelicFeather"), { prefix = A.macroDismountString });
         elseif ( A.playerSpecTalentsInfos["spec"] == 2 and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Mind
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.priestBodyAndMind);
+            return A:FormatMacroCast(A:GetClassSpellID("priestBodyAndMind"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -470,9 +618,9 @@ end
 --- Rogue pre click macro
 -- For Rogues we handle Sprint when moving
 function A:SetRoguePreClickMacro()
-    if ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
+    if ( A:IsPlayerMovingForMountFallback() ) then
         if ( A.playerLevel >= 26 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.rogueSprint);
+            return A:FormatMacroCast(A:GetClassSpellID("rogueSprint"), { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -481,36 +629,121 @@ function A:SetRoguePreClickMacro()
     end
 end
 
---- Shaman pre click macro
--- For Shamans we handle Ghost Wolf when moving
-function A:SetShamanPreClickMacro()
-    if ( (not IsMounted() and GetUnitSpeed("player") > 0 and A.playerLevel >= 15)
-    or (A.db.profile.noMountAfterCancelForm and GetShapeshiftForm(1) > 0) ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.shamanGhostWolf);
-    else
-        return "/pammount";
+--- Shaman pre click: Ghost Wolf (2645) toggles like the default spell button.
+-- Enter via type=spell; exit via /cancelform when already in form.
+-- Otherwise try RandomMount in PreClick; on failure cast Ghost Wolf on the same click.
+A.SHAMAN_GHOST_WOLF_SPELL_ID = 2645;
+
+function A:IsShamanInGhostWolf()
+    if ( GetShapeshiftForm(1) > 0 ) then
+        return 1;
     end
+
+    if ( C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID ) then
+        if ( C_UnitAuras.GetPlayerAuraBySpellID(A.SHAMAN_GHOST_WOLF_SPELL_ID) ) then
+            return 1;
+        end
+    end
+
+    return nil;
+end
+
+function A:SetMountButtonGhostWolf(button)
+    button:SetAttribute("type", "spell");
+    button:SetAttribute("spell", A.SHAMAN_GHOST_WOLF_SPELL_ID);
+    A:DebugMessage("Preclick set to spell: Ghost Wolf (2645)");
+end
+
+function A:SetMountButtonCancelGhostWolf(button)
+    button:SetAttribute("type", "macro");
+    button:SetAttribute("macrotext", "/cancelform");
+    A:DebugMessage("Preclick set to /cancelform (exit Ghost Wolf)");
+end
+
+function A:SetMountButtonIdle(button)
+    -- No secure action after PreClick (RandomMount already ran in Lua)
+    button:SetAttribute("type", "macro");
+    button:SetAttribute("macrotext", nil);
+end
+
+--- Returns true when Shaman should use Ghost Wolf instead of trying a mount first
+function A:ShamanPreferGhostWolf()
+    if ( A.playerLevel < 15 ) then return nil; end
+    if ( A:IsShamanInGhostWolf() ) then return nil; end
+
+    if ( A:IsPlayerMovingForMountFallback() ) then
+        return 1;
+    end
+
+    if ( IsIndoors() ) then
+        return 1;
+    end
+
+    return nil;
+end
+
+--- Shaman left-click mount button (class macros enabled)
+function A:PreClickMountShaman(button)
+    -- Same as Blizzard spell button: second click exits the form
+    if ( A:IsShamanInGhostWolf() ) then
+        A:SetMountButtonCancelGhostWolf(button);
+        return;
+    end
+
+    if ( A:ShamanPreferGhostWolf() ) then
+        A:SetMountButtonGhostWolf(button);
+        return;
+    end
+
+    -- Attempt mount in PreClick Lua; on failure cast Ghost Wolf on this same click
+    A:SetMountButtonIdle(button);
+
+    if ( A:RandomMount() ) then
+        return;
+    end
+
+    if ( not IsMounted() ) then
+        A:SetMountButtonGhostWolf(button);
+    end
+end
+
+--- Legacy string-based shaman macro (kept for water-walking / custom callers)
+function A:SetShamanPreClickMacro()
+    if ( A:IsShamanInGhostWolf() ) then
+        return "/cancelform";
+    end
+
+    if ( A:ShamanPreferGhostWolf() ) then
+        return A:FormatMacroCast(A.SHAMAN_GHOST_WOLF_SPELL_ID, { prefix = A.macroDismountString or "/dismount [mounted]" });
+    end
+
+    return "/pammount";
 end
 
 --- Warlock pre click macro
 -- For Warlocks we handle teleport and Burning Rush
 function A:SetWarlockPreClickMacro()
+    local demonicCircle = A:GetClassSpellID("warlockDemonicCircle");
+    local burningRush = A:GetClassSpellID("warlockBurningRush");
+
     if ( A.playerSpecTalentsInfos["row5"] == 1 and not IsMounted() ) then
         if (  A:IsModifierDown(A.db.profile.warlockDemonicCircleModifier) ) then
-            return ("/cast %s"):format(A.warlockDemonicCircle);
-        elseif ( GetUnitSpeed("player") > 0 ) then
-            return ("%s\n/cast %s"):format(A.macroDismountString, A.warlockDemonicCircle);
+            return A:FormatMacroCast(demonicCircle);
+        elseif ( A:IsPlayerMovingForMountFallback() ) then
+            return A:FormatMacroCast(demonicCircle, { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
     elseif ( A.playerSpecTalentsInfos["row5"] == 2 ) then
-        if ( not IsMounted() and GetUnitSpeed("player") > 0 ) then
-            if ( A.db.profile.warlockWantModifier ) then
-                return ("/cancelaura [mod:%s] %s\n/stopmacro [mod:%s]\n%s\n/cast !%s")
-                :format(A.db.profile.warlockModifier, A.warlockBurningRush, A.db.profile.warlockModifier, A.macroDismountString, A.warlockBurningRush);
-            else
-                return ("%s\n/cast %s"):format(A.macroDismountString, A.warlockBurningRush);
+        if ( A:IsPlayerMovingForMountFallback() ) then
+            if ( A.db.profile.warlockWantModifier and burningRush ) then
+                local rushName = A:GetMacroSpellName(burningRush);
+                if ( rushName ) then
+                    return ("/cancelaura [mod:%s] %s\n/stopmacro [mod:%s]\n%s\n/cast !%s")
+                    :format(A.db.profile.warlockModifier, rushName, A.db.profile.warlockModifier, A.macroDismountString, rushName);
+                end
             end
+            return A:FormatMacroCast(burningRush, { prefix = A.macroDismountString });
         else
             return "/pammount";
         end
@@ -522,8 +755,8 @@ end
 --- Warrior pre click macro
 -- For Warriors we handle Heroic Leap, Charge and Intervene
 function A:SetWarriorPreClickMacro()
-    if ( not IsMounted() and GetUnitSpeed("player") > 0 and A.playerLevel >= 76 ) then
-        return ("%s\n/cast %s"):format(A.macroDismountString, A.warriorHeroicLeap);
+    if ( A:IsPlayerMovingForMountFallback() and A.playerLevel >= 76 ) then
+        return A:FormatMacroCast(A:GetClassSpellID("warriorHeroicLeap"), { prefix = A.macroDismountString });
     else
         return "/pammount";
     end
@@ -720,19 +953,90 @@ function A:SetPreClickFunction(noCustom)
     end
 end
 
+--- True when unmounted and moving (class mount-button fallbacks).
+-- Prefer IsPlayerMoving(): GetUnitSpeed can be a secret value in Midnight and fail comparisons.
+function A:IsPlayerMovingForMountFallback()
+    if ( IsMounted() ) then
+        return nil;
+    end
+
+    if ( IsPlayerMoving and IsPlayerMoving() ) then
+        return 1;
+    end
+
+    local speed = GetUnitSpeed("player");
+    if ( type(speed) == "number" and speed > 0 ) then
+        return 1;
+    end
+
+    return nil;
+end
+
+--- Apply class fallback while moving (or shaman Ghost Wolf toggle). Returns 1 if handled.
+function A:ApplyClassMovementFallback(button)
+    if ( not A.db.profile.classesMacrosEnabled or A.db.profile.customMountMacrosEnabled ) then
+        return nil;
+    end
+
+    -- Shaman: exit Ghost Wolf on second click even while standing still
+    if ( A.playerClass == "SHAMAN" and A:IsShamanInGhostWolf() ) then
+        A:PreClickMountShaman(button);
+        return 1;
+    end
+
+    if ( not A:IsPlayerMovingForMountFallback() ) then
+        return nil;
+    end
+
+    if ( A.playerClass == "SHAMAN" ) then
+        A:PreClickMountShaman(button);
+        return 1;
+    end
+
+    -- Other classes: PreClickFunc already returns the movement ability when moving
+    if ( A.PreClickFunc and A.PreClickFunc ~= A.SetDefaultPreClickMacro ) then
+        local macro = A:PreClickFunc();
+        if ( macro and macro ~= "/pammount" ) then
+            button:SetAttribute("type", "macro");
+            button:SetAttribute("macrotext", macro);
+            A:DebugMessage(("Preclick movement fallback: %s"):format(macro));
+            return 1;
+        end
+    end
+
+    return nil;
+end
+
 --- PreClick callback
 function A:PreClickMount(button, clickedBy)
     if ( not A.addonRunning or InCombatLockdown() ) then return; end
 
     if ( clickedBy == "LeftButton" ) then
+        -- Shift+Click: use slash macro (not Lua+nil macrotext). Keeps normal clicks intact.
         if ( A.db.profile.mountButtonshiftClickEnabled and IsShiftKeyDown() ) then
+            local cmd = A:GetShiftClickMountCommand();
+            button:SetAttribute("type", "macro");
+            button:SetAttribute("macrotext", cmd);
+            A:ApplyShiftClickMountAttributes(button);
+            A:DebugMessage(("Preclick shift-click macro: %s"):format(cmd));
+            return;
+        end
+
+        if ( A.db.profile.mountButtonControlLock and IsControlKeyDown() ) then
             button:SetAttribute("type", "macro");
             button:SetAttribute("macrotext", nil);
-            A:RandomMount(A.db.profile.mountButtonshiftClickCat);
-        elseif ( A.db.profile.mountButtonControlLock and IsControlKeyDown() ) then
-            button:SetAttribute("type", "macro");
-            button:SetAttribute("macrotext", nil);
+            A:ApplyShiftClickMountAttributes(button);
             A:ToggleButtonLock(button:GetName());
+        elseif ( A:ApplyClassMovementFallback(button) ) then
+            -- Moving (or shaman leaving Ghost Wolf): class ability, skip mount logic
+            A:ApplyShiftClickMountAttributes(button);
+            return;
+        elseif ( IsMounted() ) then
+            -- Still mounted (e.g. flyer in water): dismount first, skip special item/spell casts
+            button:SetAttribute("type", "macro");
+            button:SetAttribute("macrotext", "/pammount");
+            A:ApplyShiftClickMountAttributes(button);
+            A:DebugMessage("Preclick mounted -> /pammount (dismount)");
         else
             -- Special mounts
             if ( A.db.profile.telaariTalbuk and A:IsTelaariTalbukUsable() and not A:IsSwimming() and not A:IsFlyable() and not IsIndoors() and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 165803 - Telaari Talbuk / 164222 - Frostwolf War Wolf
@@ -784,20 +1088,26 @@ function A:PreClickMount(button, clickedBy)
             elseif ( A.db.profile.surfaceMount and ((A.playerClass == "DEATHKNIGHT" and A.playerLevel >= 66)
             or (A.playerClass == "SHAMAN" and A.playerLevel >= 24)) and A:IsSwimming() == 2 and A.classSpellsOK ) then
                 if ( A.db.profile.preferSurfaceSpell or (not A.db.profile.preferSurfaceSpell and not A:GotMountAllTable(6)) ) then
-                    if ( A.playerClass == "DEATHKNIGHT" and not A:PlayerGotBuff(A.deathKnightPathOfFrost) ) then
+                    if ( A.playerClass == "DEATHKNIGHT" and not A:PlayerGotBuff(A:GetClassSpellID("deathKnightPathOfFrost")) ) then
+                        local macro = A:FormatMacroCast(A:GetClassSpellID("deathKnightPathOfFrost"), { bang = true });
                         button:SetAttribute("type", "macro");
-                        button:SetAttribute("macrotext", "/cast !"..A.deathKnightPathOfFrost);
-                        A:DebugMessage(("Preclick macro set to: %s"):format("/cast !"..A.deathKnightPathOfFrost));
+                        button:SetAttribute("macrotext", macro);
+                        A:DebugMessage(("Preclick macro set to: %s"):format(macro));
                     elseif ( A.playerClass == "SHAMAN" ) then
-                        if ( A:PlayerGotBuff(A.shamanWaterWalking) ) then
-                            local macro = A:PreClickFunc();
+                        local waterWalkingID = A:GetClassSpellID("shamanWaterWalking");
+                        if ( A:PlayerGotBuff(waterWalkingID) ) then
+                            if ( A.db.profile.classesMacrosEnabled ) then
+                                A:PreClickMountShaman(button);
+                            else
+                                local macro = A:PreClickFunc();
+                                button:SetAttribute("type", "macro");
+                                button:SetAttribute("macrotext", macro);
+                            end
+                        else
+                            local macro = A:FormatMacroCast(waterWalkingID);
                             button:SetAttribute("type", "macro");
                             button:SetAttribute("macrotext", macro);
                             A:DebugMessage(("Preclick macro set to: %s"):format(macro));
-                        else
-                            button:SetAttribute("type", "macro");
-                            button:SetAttribute("macrotext", "/cast "..A.shamanWaterWalking);
-                            A:DebugMessage(("Preclick macro set to: %s"):format("macrotext", "/cast "..A.shamanWaterWalking));
                         end
                     else
                         local macro = A:PreClickFunc();
@@ -806,21 +1116,32 @@ function A:PreClickMount(button, clickedBy)
                         A:DebugMessage(("Preclick macro set to: %s"):format(macro));
                     end
                 else
+                    if ( A.playerClass == "SHAMAN" and A.db.profile.classesMacrosEnabled ) then
+                        A:PreClickMountShaman(button);
+                    else
+                        local macro = A:PreClickFunc();
+                        button:SetAttribute("type", "macro");
+                        button:SetAttribute("macrotext", macro);
+                        A:DebugMessage(("Preclick macro set to: %s"):format(macro));
+                    end
+                end
+            else
+                if ( A.playerClass == "SHAMAN" and A.db.profile.classesMacrosEnabled and not A.db.profile.customMountMacrosEnabled ) then
+                    A:PreClickMountShaman(button);
+                else
                     local macro = A:PreClickFunc();
                     button:SetAttribute("type", "macro");
                     button:SetAttribute("macrotext", macro);
-                    A:DebugMessage(("Preclick macro set to: %s"):format(macro));
+                    A:DebugMessage(("Preclick macro set to: %s"):format(tostring(macro)));
                 end
-            else
-                local macro = A:PreClickFunc();
-                button:SetAttribute("type", "macro");
-                button:SetAttribute("macrotext", macro);
-                A:DebugMessage(("Preclick macro set to: %s"):format(macro));
             end
+
+            A:ApplyShiftClickMountAttributes(button);
         end
     elseif ( clickedBy == "RightButton" ) then
         button:SetAttribute("type", "macro");
         button:SetAttribute("macrotext", nil);
+        A:ApplyShiftClickMountAttributes(button);
 
         local point, relativePoint = A:GetMenuButtonAnchor();
 
@@ -830,6 +1151,7 @@ function A:PreClickMount(button, clickedBy)
     elseif ( clickedBy == "MiddleButton" ) then
         button:SetAttribute("type", "macro");
         button:SetAttribute("macrotext", nil);
+        A:ApplyShiftClickMountAttributes(button);
         A:OpenConfigPanel();
     end
 end
@@ -979,40 +1301,49 @@ function A:SetPostClickMacro(noCustom)
     if ( A.db.profile.classesMacrosEnabled and A.classSpellsOK ) then
         -- Death Knight
         if ( A.playerClass == "DEATHKNIGHT" ) then
-            local specGroup = GetActiveSpecGroup();
-            local selected = select(4, GetTalentInfo(3, 1, specGroup));
-
             if ( A.playerLevel >= 60 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.deathKnightWraithWalk);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("deathKnightWraithWalk"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Druid
         elseif ( A.playerClass == "DRUID" ) then
             if ( A.playerLevel >= 16 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted,indoors] %s; [nomounted] %s"):format(A.macroDismountString, A.druidCatForm, A.druidTravelForm);
+                A.postClickMacro = A:FormatMacroCastChain({
+                    { condition = "[nomounted,indoors]", id = A:GetClassSpellID("druidCatForm") },
+                    { condition = "[nomounted]", id = A:GetClassSpellID("druidTravelForm") },
+                }, { prefix = A.macroDismountString });
             elseif ( A.playerLevel >= 6 ) then
-                A.postClickMacro = ("%s\n/cast %s"):format(A.macroDismountString, A.druidCatForm);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("druidCatForm"), { prefix = A.macroDismountString });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Hunter
         elseif ( A.playerClass == "HUNTER" ) then
             if ( A.playerLevel >= 5 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.hunterAspectCheetah);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("hunterAspectCheetah"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Mage
         elseif ( A.playerClass == "MAGE" ) then
             if ( A.db.profile.mageForceSlowFall ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.mageSlowFall);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("mageSlowFall"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
-                local specGroup = GetActiveSpecGroup();
-                local selected = select(4, GetTalentInfo(1, 2, specGroup));
-
                 if ( A.playerLevel >= 7 ) then
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.mageBlink);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("mageBlink"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 else
                     A.postClickMacro = A.macroDismountString;
                 end
@@ -1020,30 +1351,51 @@ function A:SetPostClickMacro(noCustom)
         -- Monk
         elseif ( A.playerClass == "MONK" ) then
             if ( A.db.profile.monkPreferSerpentKick and A.playerLevel >= 18 and A.playerSpecTalentsInfos["spec"] == 3 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.monkFlyingSerpentKick);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("monkFlyingSerpentKick"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             elseif ( A.playerLevel >= 5 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.monkRoll);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("monkRoll"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Paladin
         elseif ( A.playerClass == "PALADIN" ) then
             if ( A.playerLevel >= 28 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.paladinDivineSteed);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("paladinDivineSteed"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Priest
         elseif ( A.playerClass == "PRIEST" ) then
             if ( A.db.profile.priestForceLevitate ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.priestLevitate);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestLevitate"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 if ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 3) and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Soul
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.priestPowerWordShield);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestPowerWordShield"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 elseif ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 2) and A.playerSpecTalentsInfos["row2"] == 1) then -- Angelic Feather
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.priestAngelicFeather);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestAngelicFeather"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 elseif ( A.playerSpecTalentsInfos["spec"] == 2 and A.playerSpecTalentsInfos["row2"] == 2) then -- Body And Mind
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.priestBodyAndMind);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("priestBodyAndMind"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 else
                     A.postClickMacro = A.macroDismountString;
                 end
@@ -1051,27 +1403,50 @@ function A:SetPostClickMacro(noCustom)
         -- Rogue
         elseif ( A.playerClass == "ROGUE" ) then
             if ( A.playerLevel >= 26 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.rogueSprint);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("rogueSprint"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Shaman
         elseif ( A.playerClass == "SHAMAN" ) then
             if ( A.playerLevel >= 15 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.shamanGhostWolf);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("shamanGhostWolf"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 A.postClickMacro = A.macroDismountString;
             end
         -- Warlock
         elseif ( A.playerClass == "WARLOCK" ) then
+            local demonicCircle = A:GetClassSpellID("warlockDemonicCircle");
+            local burningRush = A:GetClassSpellID("warlockBurningRush");
+
             if ( A.playerSpecTalentsInfos["row5"] == 1 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.warlockDemonicCircle);
+                A.postClickMacro = A:FormatMacroCast(demonicCircle, {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             elseif ( A.playerSpecTalentsInfos["row5"] == 2 ) then
-                if ( A.db.profile.warlockWantModifier ) then
-                    A.postClickMacro = ("%s\n/cast [nomounted,novehicleui,nomod] !%s\n/cancelaura [nomounted,novehicleui,mod:%s] %s")
-                    :format(A.macroDismountString, A.warlockBurningRush, A.db.profile.warlockModifier, A.warlockBurningRush);
+                if ( A.db.profile.warlockWantModifier and burningRush ) then
+                    local rushName = A:GetMacroSpellName(burningRush);
+                    if ( rushName ) then
+                        A.postClickMacro = ("%s\n/cast [nomounted,novehicleui,nomod] !%s\n/cancelaura [nomounted,novehicleui,mod:%s] %s")
+                        :format(A.macroDismountString, rushName, A.db.profile.warlockModifier, rushName);
+                    else
+                        A.postClickMacro = A:FormatMacroCast(burningRush, {
+                            prefix = A.macroDismountString,
+                            condition = "[nomounted]",
+                        });
+                    end
                 else
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.warlockBurningRush);
+                    A.postClickMacro = A:FormatMacroCast(burningRush, {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 end
             else
                 A.postClickMacro = A.macroDismountString;
@@ -1079,12 +1454,21 @@ function A:SetPostClickMacro(noCustom)
         -- Warrior
         elseif ( A.playerClass == "WARRIOR" ) then
             if ( A.db.profile.warriorForceHeroicLeap and A.playerLevel >= 76 ) then
-                A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.warriorHeroicLeap);
+                A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("warriorHeroicLeap"), {
+                    prefix = A.macroDismountString,
+                    condition = "[nomounted]",
+                });
             else
                 if ( A.playerSpecTalentsInfos["spec"] == 3 and A.playerLevel >= 72 ) then
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.warriorIntercept);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("warriorIntercept"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 elseif ( (A.playerSpecTalentsInfos["spec"] == 1 or A.playerSpecTalentsInfos["spec"] == 2) and A.playerLevel >= 3 ) then
-                    A.postClickMacro = ("%s\n/cast [nomounted] %s"):format(A.macroDismountString, A.warriorCharge);
+                    A.postClickMacro = A:FormatMacroCast(A:GetClassSpellID("warriorCharge"), {
+                        prefix = A.macroDismountString,
+                        condition = "[nomounted]",
+                    });
                 else
                     A.postClickMacro = A.macroDismountString;
                 end
@@ -1103,6 +1487,8 @@ function A:SetPostClickMacro(noCustom)
 end
 
 --- PostClick callback
+-- Applies A.postClickMacro for the *next* click. Out of combat, PreClick usually
+-- overwrites macrotext again; this mainly matters in combat (PreClick cannot change attributes).
 function A:PostClickMount(button, clickedBy)
     if ( not A.addonRunning or InCombatLockdown() ) then return; end
 
@@ -1178,10 +1564,12 @@ function A:LockButton(button)
         button = button:GetName();
     end
 
-    _G[button]:SetMovable(nil);
-    _G[button]:SetScript("OnDragStart", nil);
-    _G[button]:SetScript("OnDragStop", nil);
-    A.db.profile[button].lock = 1;
+    local b = _G[button];
+    b:SetMovable(false);
+    b:RegisterForDrag();
+    b:SetScript("OnDragStart", nil);
+    b:SetScript("OnDragStop", nil);
+    A.db.profile[button].lock = true;
 
     if ( A.AceConfigRegistry ) then
         A:NotifyChangeForAll();
@@ -1201,10 +1589,11 @@ function A:UnlockButton(button)
 
     if ( A.db.profile.dockButton and button == "PetsAndMountsSecureButtonPets" ) then return; end
 
-    _G[button]:SetMovable(1);
-    _G[button]:RegisterForDrag("LeftButton");
-    _G[button]:SetScript("OnDragStart", _G[button].StartMoving);
-    _G[button]:SetScript("OnDragStop", function(self)
+    local b = _G[button];
+    b:SetMovable(true);
+    b:RegisterForDrag("LeftButton");
+    b:SetScript("OnDragStart", b.StartMoving);
+    b:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing();
 
         local point, relativeTo, relativePoint, offX, offY = self:GetPoint(1);
@@ -1441,6 +1830,7 @@ function A:SetButtons()
     end);
     PetsAndMountsSecureButtonMounts:SetAttribute("type", "macro");
     PetsAndMountsSecureButtonMounts:SetAttribute("macrotext", "/pammount");
+    A:ApplyShiftClickMountAttributes(PetsAndMountsSecureButtonMounts);
 
     -- Other mount buttons too
     PetsAndMountsSecureButtonPassengers:SetScript("PreClick", function(self, button, down)
