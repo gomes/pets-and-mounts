@@ -1,4 +1,4 @@
-## Interface: 120007
+## Interface: 120105
 ## Title: Pets & Mounts |cFFC79C6E[|cFF69CCF0Configuration|cFFC79C6E]
 ## Notes: Auto and random summon highly customizable for your pets and mounts, with Data Broker support.
 ## Author: 4ss3mbly
