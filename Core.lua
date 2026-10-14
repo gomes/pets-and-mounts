@@ -60,6 +60,42 @@ local _G = _G;
     Common methods
 -------------------------------------------------------------------------------]]--
 
+--- Item info compatible with Midnight (global GetItemInfo removed in 12.0)
+function A:GetItemInfoCompat(itemID)
+    if ( C_Item and C_Item.GetItemInfo ) then
+        return C_Item.GetItemInfo(itemID);
+    end
+
+    if ( GetItemInfo ) then
+        return GetItemInfo(itemID);
+    end
+end
+
+--- Item count compatible with Midnight (global GetItemCount removed in 12.0)
+function A:GetItemCountCompat(itemID, includeBank, includeUses)
+    if ( C_Item and C_Item.GetItemCount ) then
+        return C_Item.GetItemCount(itemID, includeBank, includeUses) or 0;
+    end
+
+    if ( GetItemCount ) then
+        return GetItemCount(itemID, includeBank, includeUses) or 0;
+    end
+
+    return 0;
+end
+
+--- Localized weapon subclass name for fishing poles (no item cache required)
+function A:GetFishingPoleItemSubType()
+    local weaponClassID = ( Enum and Enum.ItemClass and Enum.ItemClass.Weapon ) or 2;
+    local fishingPoleSubClassID = ( Enum and Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole ) or 20;
+
+    if ( C_Item and C_Item.GetItemSubClassInfo ) then
+        return C_Item.GetItemSubClassInfo(weaponClassID, fishingPoleSubClassID);
+    end
+
+    return select(7, A:GetItemInfoCompat(6256));
+end
+
 --- Fake refresh config method
 function A:NotifyChangeForAll()
 end
@@ -1777,11 +1813,7 @@ end
 
 --- Set the fishing poles subType, localized
 function A:SetFishingPoleSubType()
-    A.fishingPoleSubType = select(7, GetItemInfo(6256));
-
-    if ( not A.fishingPoleSubType ) then
-        A:ScheduleTimer("SetFishingPoleSubType", 1);
-    end
+    A.fishingPoleSubType = A:GetFishingPoleItemSubType();
 end
 
 --- Set everything
@@ -2536,8 +2568,8 @@ end
 
 function A:PLAYER_TALENT_UPDATE()
     A.playerCurrentSpecID = A:GetPlayerCurrentSpecID();
-    A:SetPostClickMacro();
     A:GetPlayerSpecTalentsInfos();
+    A:SetPostClickMacro();
 end
 
 function A:PET_BATTLE_OPENING_START()

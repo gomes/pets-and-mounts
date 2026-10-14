@@ -83,7 +83,7 @@ end
 function A:CheckHauntedMemento()
     if ( not A.db.profile.hauntedMemento ) then return nil; end
 
-    if ( GetItemCount(40110, nil, nil) == 1 ) then
+    if ( A:GetItemCountCompat(40110) == 1 ) then
         A:DebugMessage("CheckHauntedMemento() - Haunted Memento in bags");
         return 1;
     end

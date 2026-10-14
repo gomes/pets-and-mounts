@@ -5541,26 +5541,6 @@ function A:OptionsAbout()
                 type = "description",
                 fontSize = "medium",
             },
-            version =
-            {
-                order = 6,
-                name = function()
-                    local version, revision = A:GetAddonVersion(A.version);
-                    local color;
-
-                    if ( A.addonUpdateMessageInfo ) then
-                        color = A.color.RED;
-                    else
-                        color = A.color.GREEN;
-                    end
-
-                    return A.color.BLUE..L["Version"]..A.color.RESET..": "..L["You are running Pets & Mounts version %s revision %s %s."]
-                    :format(color..tostring(version)..A.color.RESET, color..tostring(revision), L[A.versionStage]..A.color.RESET);
-                end,
-                width = "full",
-                type = "description",
-                fontSize = "medium",
-            },
             newVersion =
             {
                 order = 7,
