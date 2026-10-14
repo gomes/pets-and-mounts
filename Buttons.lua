@@ -122,7 +122,19 @@ end
 
 --- IsEquippedItemType with a check on A.fishingPole subType
 function A:IsEquippedFishingPole()
-    if ( A.fishingPoleSubType ) then
+    if ( not A.fishingPoleSubType ) then
+        A:SetFishingPoleSubType();
+    end
+
+    if ( not A.fishingPoleSubType ) then
+        return nil;
+    end
+
+    if ( C_Item and C_Item.IsEquippedItemType ) then
+        return C_Item.IsEquippedItemType(A.fishingPoleSubType);
+    end
+
+    if ( IsEquippedItemType ) then
         return IsEquippedItemType(A.fishingPoleSubType);
     end
 
@@ -1098,29 +1110,29 @@ function A:PreClickMount(button, clickedBy, down)
                     button:SetAttribute("type", "macro");
                     button:SetAttribute("macrotext", ("/use %s"):format(A.telaariTalbukName or "Frostwolf War Wolf"));
                 end
-            elseif ( A.db.profile.shimmeringMoonstone and GetItemCount(101675, nil, nil) > 0 and not A:IsSwimming() and not A:IsFlyable() and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 37011 - Shimmering Moonstone from Darkmoon fair (Moonfang drop)
-                if ( not A.shimmeringMoonstoneName ) then A.shimmeringMoonstoneName = GetItemInfo(101675); end
+            elseif ( A.db.profile.shimmeringMoonstone and A:GetItemCountCompat(101675) > 0 and not A:IsSwimming() and not A:IsFlyable() and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 101675 - Shimmering Moonstone from Darkmoon fair (Moonfang drop)
+                if ( not A.shimmeringMoonstoneName ) then A.shimmeringMoonstoneName = A:GetItemInfoCompat(101675); end
 
                 button:SetAttribute("type", "macro");
                 button:SetAttribute("macrotext", ("/use %s"):format(A.shimmeringMoonstoneName or "Shimmering Moonstone"));
-            elseif ( A.db.profile.magicBroom and GetItemCount(37011, nil, nil) > 0 and (A:IsSwimming() == 2 or not A:IsSwimming()) and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 37011 - Magic Broom from Hallow's End
-                if ( not A.magicBroomName ) then A.magicBroomName = GetItemInfo(37011); end
+            elseif ( A.db.profile.magicBroom and A:GetItemCountCompat(37011) > 0 and (A:IsSwimming() == 2 or not A:IsSwimming()) and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 37011 - Magic Broom from Hallow's End
+                if ( not A.magicBroomName ) then A.magicBroomName = A:GetItemInfoCompat(37011); end
 
                 button:SetAttribute("type", "macro");
                 button:SetAttribute("macrotext", ("/use %s"):format(A.magicBroomName or "Magic Broom"));
             elseif ( A.db.profile.anglersFishingRaft and PlayerHasToy(85500) and A:IsSwimming() == 2 and (A:IsEquippedFishingPole() or (ShentonFishingGlobal and ShentonFishingGlobal.isFishing)) and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- 85500 - Anglers Fishing Raft
-                if ( not A.anglersFishingRaft ) then A.anglersFishingRaft = GetItemInfo(85500); end
+                if ( not A.anglersFishingRaft ) then A.anglersFishingRaft = A:GetItemInfoCompat(85500); end
 
                 button:SetAttribute("type", "macro");
                 button:SetAttribute("macrotext", ("/use %s"):format(A.anglersFishingRaft or "Anglers Fishing Raft"));
-            elseif ( A.db.profile.oculusDrakes and (GetItemCount(37815, nil, nil) > 0 or GetItemCount(37859, nil, nil) > 0 or GetItemCount(37860, nil, nil) > 0)
+            elseif ( A.db.profile.oculusDrakes and (A:GetItemCountCompat(37815) > 0 or A:GetItemCountCompat(37859) > 0 or A:GetItemCountCompat(37860) > 0)
             and (A.currentMapID == "143") and not (A.db.profile.vehicleExit and A:IsPlayerInVehicle()) ) then -- Oculus drakes: 37815 Emerald Essence - 37859 Amber Essence - 37860 Ruby Essence
-                if ( GetItemCount(37815, nil, nil) > 0 ) then
-                    A.oculusDrake = GetItemInfo(37815);
-                elseif ( GetItemCount(37859, nil, nil) > 0 ) then
-                    A.oculusDrake = GetItemInfo(37859);
-                elseif ( GetItemCount(37860, nil, nil) > 0 ) then
-                    A.oculusDrake = GetItemInfo(37860);
+                if ( A:GetItemCountCompat(37815) > 0 ) then
+                    A.oculusDrake = A:GetItemInfoCompat(37815);
+                elseif ( A:GetItemCountCompat(37859) > 0 ) then
+                    A.oculusDrake = A:GetItemInfoCompat(37859);
+                elseif ( A:GetItemCountCompat(37860) > 0 ) then
+                    A.oculusDrake = A:GetItemInfoCompat(37860);
                 end
 
                 button:SetAttribute("type", "macro");
@@ -1248,6 +1260,10 @@ end
 
 -- Post click macro
 function A:SetPostClickMacro(noCustom)
+    if ( not A.macroDismountString ) then
+        A:SetMacroDismountString();
+    end
+
     if ( A.db.profile.customMountMacrosEnabled and not noCustom) then
         local name, where = GetInstanceInfo();
 
@@ -1515,10 +1531,12 @@ function A:SetPostClickMacro(noCustom)
         A.postClickMacro = A.macroDismountString;
     end
 
+    A.postClickMacro = A.postClickMacro or A.macroDismountString or "/pammount";
+
     -- Fire the Post Click callback to update the button macro
     A:PostClickMount(PetsAndMountsSecureButtonMounts);
 
-    A:DebugMessage(("Postclick macro set to: %s"):format(A.postClickMacro));
+    A:DebugMessage(("Postclick macro set to: %s"):format(tostring(A.postClickMacro)));
 end
 
 --- PostClick callback
